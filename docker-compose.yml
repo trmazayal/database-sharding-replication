@@ -1,0 +1,54 @@
+version: '3.8'
+
+services:
+  coordinator:
+    build: .
+    container_name: citus_coordinator
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: citus
+      POSTGRES_PASSWORD: citus
+      POSTGRES_DB: citus
+    command: ["postgres", "-c", "wal_level=logical"]
+    networks:
+      - citus_network
+
+  worker1:
+    build: .
+    container_name: citus_worker1
+    environment:
+      POSTGRES_USER: citus
+      POSTGRES_PASSWORD: citus
+      POSTGRES_DB: citus
+    command: ["postgres", "-c", "wal_level=logical"]
+    networks:
+      - citus_network
+
+  worker2:
+    build: .
+    container_name: citus_worker2
+    environment:
+      POSTGRES_USER: citus
+      POSTGRES_PASSWORD: citus
+      POSTGRES_DB: citus
+    command: ["postgres", "-c", "wal_level=logical"]
+    networks:
+      - citus_network
+
+  manager:
+    build: .
+    container_name: citus_manager
+    depends_on:
+      - coordinator
+      - worker1
+      - worker2
+    entrypoint: ["/bin/bash", "-c", "/docker-entrypoint-initdb.d/setup.sh"]
+    volumes:
+      - ./setup.sh:/docker-entrypoint-initdb.d/setup.sh
+    networks:
+      - citus_network
+
+networks:
+  citus_network:
+    driver: bridge
