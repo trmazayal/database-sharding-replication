@@ -42,9 +42,18 @@ psql -h worker1 -U citus -d citus -c "CREATE EXTENSION IF NOT EXISTS postgis;"
 echo "Creating PostGIS extension on worker2..."
 psql -h worker2 -U citus -d citus -c "CREATE EXTENSION IF NOT EXISTS postgis;"
 
+# Set shard replication factor before creating distributed tables
+echo "Setting shard replication factor..."
+psql -h coordinator -U citus -d citus -c "ALTER SYSTEM SET citus.shard_replication_factor = 2;"
+psql -h coordinator -U citus -d citus -c "SELECT pg_reload_conf();"
+
 # Add worker nodes to the coordinator with full connection URIs including credentials
 echo "Adding worker nodes to the coordinator..."
 psql -h coordinator -U citus -d citus -c "SELECT citus_add_node('worker1', 5432);"
 psql -h coordinator -U citus -d citus -c "SELECT citus_add_node('worker2', 5432);"
+
+# Verify replication setup
+echo "Verifying replication setup..."
+psql -h coordinator -U citus -d citus -c "SELECT nodename, nodeport, noderack FROM pg_dist_node;"
 
 echo "Citus cluster with PostGIS support setup complete."
