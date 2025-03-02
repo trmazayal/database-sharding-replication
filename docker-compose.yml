@@ -1,22 +1,35 @@
 version: '3.8'
 
 services:
-  coordinator:
+  coordinator_primary:
     build: .
-    container_name: citus_coordinator
+    container_name: citus_coordinator_primary
     ports:
       - "5432:5432"
     environment:
       POSTGRES_USER: citus
       POSTGRES_PASSWORD: citus
       POSTGRES_DB: citus
-    command: ["postgres", "-c", "wal_level=logical"]
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U citus"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
+    entrypoint: ["/docker-entrypoint-initdb.d/primary-entrypoint.sh"]
+    volumes:
+      - citus_primary_data:/var/lib/postgresql/data
+      - ./primary-entrypoint.sh:/docker-entrypoint-initdb.d/primary-entrypoint.sh
+    networks:
+      - citus_network
+
+  coordinator_standby:
+    build: .
+    container_name: citus_coordinator_standby
+    environment:
+      POSTGRES_USER: citus
+      POSTGRES_PASSWORD: citus
+      POSTGRES_DB: citus
+    entrypoint: ["/docker-entrypoint-initdb.d/standby-entrypoint.sh"]
+    volumes:
+      - citus_standby_data:/var/lib/postgresql/data
+      - ./standby-entrypoint.sh:/docker-entrypoint-initdb.d/standby-entrypoint.sh
+    depends_on:
+      - coordinator_primary
     networks:
       - citus_network
 
@@ -27,7 +40,9 @@ services:
       POSTGRES_USER: citus
       POSTGRES_PASSWORD: citus
       POSTGRES_DB: citus
-    command: ["postgres", "-c", "wal_level=logical"]
+    command: ["postgres", "-c", "wal_level=logical", "-c", "hba_file=/etc/postgresql/pg_hba.conf"]
+    volumes:
+      - ./worker-pg_hba.conf:/etc/postgresql/pg_hba.conf
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U citus"]
       interval: 10s
@@ -44,7 +59,28 @@ services:
       POSTGRES_USER: citus
       POSTGRES_PASSWORD: citus
       POSTGRES_DB: citus
-    command: ["postgres", "-c", "wal_level=logical"]
+    command: ["postgres", "-c", "wal_level=logical", "-c", "hba_file=/etc/postgresql/pg_hba.conf"]
+    volumes:
+      - ./worker-pg_hba.conf:/etc/postgresql/pg_hba.conf
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U citus"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - citus_network
+
+  worker3:
+    build: .
+    container_name: citus_worker3
+    environment:
+      POSTGRES_USER: citus
+      POSTGRES_PASSWORD: citus
+      POSTGRES_DB: citus
+    command: ["postgres", "-c", "wal_level=logical", "-c", "hba_file=/etc/postgresql/pg_hba.conf"]
+    volumes:
+      - ./worker-pg_hba.conf:/etc/postgresql/pg_hba.conf
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U citus"]
       interval: 10s
@@ -58,9 +94,11 @@ services:
     build: .
     container_name: citus_manager
     depends_on:
-      - coordinator
+      - coordinator_primary
+      - coordinator_standby
       - worker1
       - worker2
+      - worker3
     entrypoint: ["/bin/bash", "-c", "/docker-entrypoint-initdb.d/setup.sh"]
     volumes:
       - ./setup.sh:/docker-entrypoint-initdb.d/setup.sh
@@ -70,3 +108,7 @@ services:
 networks:
   citus_network:
     driver: bridge
+
+volumes:
+  citus_primary_data:
+  citus_standby_data:
