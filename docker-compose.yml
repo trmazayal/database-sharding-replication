@@ -2,7 +2,9 @@ version: '3.8'
 
 services:
   loadbalancer:
-    image: haproxy:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.loadbalancer
     container_name: citus_loadbalancer
     ports:
       - "5432:5432"
