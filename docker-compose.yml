@@ -1,37 +1,69 @@
 version: '3.8'
 
 services:
+  loadbalancer:
+    image: haproxy:latest
+    container_name: citus_loadbalancer
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    depends_on:
+      coordinator_primary:
+        condition: service_healthy
+      coordinator_secondary:
+        condition: service_healthy
+    networks:
+      - citus_network
+    restart: unless-stopped
+
   coordinator_primary:
     build: .
     container_name: citus_coordinator_primary
     ports:
-      - "5432:5432"
+      - "5433:5432"
     environment:
       POSTGRES_USER: citus
       POSTGRES_PASSWORD: citus
       POSTGRES_DB: citus
-    entrypoint: ["/docker-entrypoint-initdb.d/primary-entrypoint.sh"]
+    entrypoint: ["/bin/bash", "/docker-entrypoint-initdb.d/primary-entrypoint.sh"]
     volumes:
       - citus_primary_data:/var/lib/postgresql/data
       - ./primary-entrypoint.sh:/docker-entrypoint-initdb.d/primary-entrypoint.sh
     networks:
       - citus_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U citus || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
 
-  coordinator_standby:
+  coordinator_secondary:
     build: .
-    container_name: citus_coordinator_standby
+    container_name: citus_coordinator_secondary
+    ports:
+      - "5434:5432"
     environment:
       POSTGRES_USER: citus
       POSTGRES_PASSWORD: citus
       POSTGRES_DB: citus
-    entrypoint: ["/docker-entrypoint-initdb.d/standby-entrypoint.sh"]
+    entrypoint: ["/bin/bash", "/docker-entrypoint-initdb.d/secondary-entrypoint.sh"]
     volumes:
-      - citus_standby_data:/var/lib/postgresql/data
-      - ./standby-entrypoint.sh:/docker-entrypoint-initdb.d/standby-entrypoint.sh
+      - citus_secondary_data:/var/lib/postgresql/data
+      - ./secondary-entrypoint.sh:/docker-entrypoint-initdb.d/secondary-entrypoint.sh
     depends_on:
-      - coordinator_primary
+      coordinator_primary:
+        condition: service_healthy
     networks:
       - citus_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U citus"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
 
   worker1:
     build: .
@@ -95,7 +127,7 @@ services:
     container_name: citus_manager
     depends_on:
       - coordinator_primary
-      - coordinator_standby
+      - coordinator_secondary
       - worker1
       - worker2
       - worker3
@@ -111,4 +143,4 @@ networks:
 
 volumes:
   citus_primary_data:
-  citus_standby_data:
+  citus_secondary_data:
