@@ -67,16 +67,17 @@ services:
       retries: 5
     restart: unless-stopped
 
-  worker1:
+  worker1_master:
     build: .
-    container_name: citus_worker1
+    container_name: citus_worker1_master
     environment:
       POSTGRES_USER: citus
       POSTGRES_PASSWORD: citus
       POSTGRES_DB: citus
-    command: ["postgres", "-c", "wal_level=logical", "-c", "hba_file=/etc/postgresql/pg_hba.conf"]
+    entrypoint: ["/bin/bash", "/docker-entrypoint-initdb.d/worker-master-entrypoint.sh"]
     volumes:
-      - ./worker-pg_hba.conf:/etc/postgresql/pg_hba.conf
+      - worker1_master_data:/var/lib/postgresql/data
+      - ./worker-master-entrypoint.sh:/docker-entrypoint-initdb.d/worker-master-entrypoint.sh
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U citus"]
       interval: 10s
@@ -86,16 +87,21 @@ services:
     networks:
       - citus_network
 
-  worker2:
+  worker1_slave:
     build: .
-    container_name: citus_worker2
+    container_name: citus_worker1_slave
     environment:
       POSTGRES_USER: citus
       POSTGRES_PASSWORD: citus
       POSTGRES_DB: citus
-    command: ["postgres", "-c", "wal_level=logical", "-c", "hba_file=/etc/postgresql/pg_hba.conf"]
+      MASTER_HOST: worker1_master
+    entrypoint: ["/bin/bash", "/docker-entrypoint-initdb.d/worker-standby-entrypoint.sh"]
     volumes:
-      - ./worker-pg_hba.conf:/etc/postgresql/pg_hba.conf
+      - ./worker-standby-entrypoint.sh:/docker-entrypoint-initdb.d/worker-standby-entrypoint.sh
+      - worker1_slave_data:/var/lib/postgresql/data
+    depends_on:
+      worker1_master:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U citus"]
       interval: 10s
@@ -105,16 +111,17 @@ services:
     networks:
       - citus_network
 
-  worker3:
+  worker2_master:
     build: .
-    container_name: citus_worker3
+    container_name: citus_worker2_master
     environment:
       POSTGRES_USER: citus
       POSTGRES_PASSWORD: citus
       POSTGRES_DB: citus
-    command: ["postgres", "-c", "wal_level=logical", "-c", "hba_file=/etc/postgresql/pg_hba.conf"]
+    entrypoint: ["/bin/bash", "/docker-entrypoint-initdb.d/worker-master-entrypoint.sh"]
     volumes:
-      - ./worker-pg_hba.conf:/etc/postgresql/pg_hba.conf
+      - worker2_master_data:/var/lib/postgresql/data
+      - ./worker-master-entrypoint.sh:/docker-entrypoint-initdb.d/worker-master-entrypoint.sh
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U citus"]
       interval: 10s
@@ -123,6 +130,92 @@ services:
     restart: unless-stopped
     networks:
       - citus_network
+
+  worker2_slave:
+    build: .
+    container_name: citus_worker2_slave
+    environment:
+      POSTGRES_USER: citus
+      POSTGRES_PASSWORD: citus
+      POSTGRES_DB: citus
+      MASTER_HOST: worker2_master
+    entrypoint: ["/bin/bash", "/docker-entrypoint-initdb.d/worker-standby-entrypoint.sh"]
+    volumes:
+      - ./worker-standby-entrypoint.sh:/docker-entrypoint-initdb.d/worker-standby-entrypoint.sh
+      - worker2_slave_data:/var/lib/postgresql/data
+    depends_on:
+      worker2_master:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U citus"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - citus_network
+
+  worker3_master:
+    build: .
+    container_name: citus_worker3_master
+    environment:
+      POSTGRES_USER: citus
+      POSTGRES_PASSWORD: citus
+      POSTGRES_DB: citus
+    entrypoint: ["/bin/bash", "/docker-entrypoint-initdb.d/worker-master-entrypoint.sh"]
+    volumes:
+      - worker3_master_data:/var/lib/postgresql/data
+      - ./worker-master-entrypoint.sh:/docker-entrypoint-initdb.d/worker-master-entrypoint.sh
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U citus"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - citus_network
+
+  worker3_slave:
+    build: .
+    container_name: citus_worker3_slave
+    environment:
+      POSTGRES_USER: citus
+      POSTGRES_PASSWORD: citus
+      POSTGRES_DB: citus
+      MASTER_HOST: worker3_master
+    entrypoint: ["/bin/bash", "/docker-entrypoint-initdb.d/worker-standby-entrypoint.sh"]
+    volumes:
+      - ./worker-standby-entrypoint.sh:/docker-entrypoint-initdb.d/worker-standby-entrypoint.sh
+      - worker3_slave_data:/var/lib/postgresql/data
+    depends_on:
+      worker3_master:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U citus"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - citus_network
+
+  worker_monitor:
+    build: .
+    container_name: citus_worker_monitor
+    depends_on:
+      - coordinator_primary
+      - worker1_master
+      - worker1_slave
+      - worker2_master
+      - worker2_slave
+      - worker3_master
+      - worker3_slave
+    entrypoint: ["/bin/bash", "/docker-entrypoint-initdb.d/worker-promotion.sh"]
+    volumes:
+      - ./worker-promotion.sh:/docker-entrypoint-initdb.d/worker-promotion.sh
+    networks:
+      - citus_network
+    restart: unless-stopped
 
   manager:
     build: .
@@ -130,9 +223,12 @@ services:
     depends_on:
       - coordinator_primary
       - coordinator_secondary
-      - worker1
-      - worker2
-      - worker3
+      - worker1_master
+      - worker1_slave
+      - worker2_master
+      - worker2_slave
+      - worker3_master
+      - worker3_slave
     entrypoint: ["/bin/bash", "-c", "/docker-entrypoint-initdb.d/setup.sh"]
     volumes:
       - ./setup.sh:/docker-entrypoint-initdb.d/setup.sh
@@ -146,3 +242,9 @@ networks:
 volumes:
   citus_primary_data:
   citus_secondary_data:
+  worker1_master_data:
+  worker1_slave_data:
+  worker2_master_data:
+  worker2_slave_data:
+  worker3_master_data:
+  worker3_slave_data:
