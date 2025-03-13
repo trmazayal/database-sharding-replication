@@ -51,7 +51,7 @@ wait_for worker3_slave 5432 10 || echo "WARNING: Worker3 slave not ready, contin
 
 echo "All required nodes are ready. Configuring Citus cluster..."
 
-# Create the Citus extension on coordinators and master worker nodes only
+# Create the Citus extension on coordinators and master worker nodes
 echo "Creating Citus extension on coordinators and master worker nodes..."
 for node in coordinator_primary coordinator_secondary worker1_master worker2_master worker3_master; do
   echo "Creating Citus extension on $node..."
@@ -65,13 +65,18 @@ for node in coordinator_primary coordinator_secondary worker1_master worker2_mas
   psql -h $node -U citus -d citus -c "CREATE EXTENSION IF NOT EXISTS postgis;"
 done
 
-# Add worker master nodes to both coordinators
-echo "Adding worker master nodes to the coordinators..."
+# Set Citus configurations for coordinator nodes
+echo "Configuring Citus settings on coordinator nodes..."
 for coordinator in coordinator_primary coordinator_secondary; do
-  echo "Adding worker master nodes to $coordinator..."
+  echo "Configuring settings on $coordinator..."
 
-  # Configure Citus to handle node connectivity issues gracefully
-  psql -h $coordinator -U citus -d citus -c "ALTER SYSTEM SET citus.node_connection_timeout = 10000;" # 10 seconds
+  # Configure SSL mode for node connections
+  psql -h $coordinator -U citus -d citus -c "ALTER SYSTEM SET citus.node_conninfo TO 'sslmode=prefer';"
+
+  # Configure longer connection timeouts
+  psql -h $coordinator -U citus -d citus -c "ALTER SYSTEM SET citus.node_connection_timeout = 10000;"
+
+  # Reload configuration
   psql -h $coordinator -U citus -d citus -c "SELECT pg_reload_conf();"
 
   # Add master workers to the Citus cluster
