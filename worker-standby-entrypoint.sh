@@ -1,55 +1,55 @@
 #!/bin/bash
 set -e
 
-echo "📥 Clearing old data from worker slave node..."
+echo "📥 Clearing old data from worker secondary node..."
 rm -rf /var/lib/postgresql/data/*
 
 # Install diagnostic tools if not already available
 echo "Installing diagnostic tools..."
 apt-get update -qq && apt-get install -y -qq netcat-openbsd iputils-ping 2>/dev/null || true
 
-# Get master host from environment variable or use default
-MASTER_HOST=${MASTER_HOST:-worker1_master}
-echo "🔄 Using master host: ${MASTER_HOST}"
+# Get primary host from environment variable or use default
+PRIMARY_HOST=${PRIMARY_HOST:-worker1_primary}
+echo "🔄 Using primary host: ${PRIMARY_HOST}"
 
-# Debug: Test network connectivity to master
-echo "🔍 Testing network connectivity to ${MASTER_HOST}..."
-ping -c 3 ${MASTER_HOST} || echo "Warning: Ping to ${MASTER_HOST} failed, but this might be due to ping being disabled"
-nc -zv ${MASTER_HOST} 5432 || echo "Warning: Cannot connect to ${MASTER_HOST}:5432, but will retry"
+# Debug: Test network connectivity to primary
+echo "🔍 Testing network connectivity to ${PRIMARY_HOST}..."
+ping -c 3 ${PRIMARY_HOST} || echo "Warning: Ping to ${PRIMARY_HOST} failed, but this might be due to ping being disabled"
+nc -zv ${PRIMARY_HOST} 5432 || echo "Warning: Cannot connect to ${PRIMARY_HOST}:5432, but will retry"
 
-# Wait for the master to be available with a timeout
-echo "⏳ Waiting for master node ${MASTER_HOST} to be ready..."
+# Wait for the primary to be available with a timeout
+echo "⏳ Waiting for primary node ${PRIMARY_HOST} to be ready..."
 MAX_RETRIES=60  # increase timeout
 RETRY_COUNT=0
-until pg_isready -h ${MASTER_HOST} -U citus -d postgres -t 5 || [ $RETRY_COUNT -ge $MAX_RETRIES ]; do
-    echo "Retry $((RETRY_COUNT+1))/$MAX_RETRIES: Waiting for master ${MASTER_HOST}..."
+until pg_isready -h ${PRIMARY_HOST} -U citus -d postgres -t 5 || [ $RETRY_COUNT -ge $MAX_RETRIES ]; do
+    echo "Retry $((RETRY_COUNT+1))/$MAX_RETRIES: Waiting for primary ${PRIMARY_HOST}..."
     sleep 5
     RETRY_COUNT=$((RETRY_COUNT+1))
 
     # Every 5 retries, check connectivity again
     if (( $RETRY_COUNT % 5 == 0 )); then
         echo "Testing connectivity during retry..."
-        nc -zv ${MASTER_HOST} 5432 || echo "Still cannot connect to ${MASTER_HOST}:5432"
+        nc -zv ${PRIMARY_HOST} 5432 || echo "Still cannot connect to ${PRIMARY_HOST}:5432"
     fi
 done
 
 if [ $RETRY_COUNT -ge $MAX_RETRIES ]; then
-    echo "❌ ERROR: Master ${MASTER_HOST} not available after $MAX_RETRIES retries. Continuing anyway, will retry pg_basebackup..."
+    echo "❌ ERROR: Primary ${PRIMARY_HOST} not available after $MAX_RETRIES retries. Continuing anyway, will retry pg_basebackup..."
 fi
 
 # Try pg_basebackup with retries and verbose output
-echo "🔄 Attempting to clone master data using pg_basebackup..."
+echo "🔄 Attempting to clone primary data using pg_basebackup..."
 MAX_BASEBACKUP_RETRIES=5  # increase retries
 BASEBACKUP_RETRY=0
 BASEBACKUP_SUCCESS=false
 
-# Check if postgres user exists on master
-echo "Checking if citus user exists on master..."
-PGPASSWORD=citus psql -h ${MASTER_HOST} -U postgres -d postgres -c "\du" || echo "Could not connect with postgres user"
+# Check if postgres user exists on primary
+echo "Checking if citus user exists on primary..."
+PGPASSWORD=citus psql -h ${PRIMARY_HOST} -U postgres -d postgres -c "\du" || echo "Could not connect with postgres user"
 
 while [ $BASEBACKUP_RETRY -lt $MAX_BASEBACKUP_RETRIES ] && [ "$BASEBACKUP_SUCCESS" = "false" ]; do
     echo "pg_basebackup attempt $((BASEBACKUP_RETRY+1))/$MAX_BASEBACKUP_RETRIES..."
-    if PGPASSWORD=citus gosu postgres pg_basebackup -h ${MASTER_HOST} -D /var/lib/postgresql/data -U citus -R -P -X stream -v; then
+    if PGPASSWORD=citus gosu postgres pg_basebackup -h ${PRIMARY_HOST} -D /var/lib/postgresql/data -U citus -R -P -X stream -v; then
         BASEBACKUP_SUCCESS=true
         echo "✅ pg_basebackup completed successfully!"
     else
@@ -61,13 +61,13 @@ done
 
 if [ "$BASEBACKUP_SUCCESS" = "false" ]; then
     echo "❌ ERROR: Failed to complete pg_basebackup after $MAX_BASEBACKUP_RETRIES attempts"
-    echo "Checking connectivity to master ${MASTER_HOST}:"
-    ping -c 3 ${MASTER_HOST} || echo "Ping failed to ${MASTER_HOST}"
-    nc -zv ${MASTER_HOST} 5432 || echo "TCP connection test failed to ${MASTER_HOST}:5432"
+    echo "Checking connectivity to primary ${PRIMARY_HOST}:"
+    ping -c 3 ${PRIMARY_HOST} || echo "Ping failed to ${PRIMARY_HOST}"
+    nc -zv ${PRIMARY_HOST} 5432 || echo "TCP connection test failed to ${PRIMARY_HOST}:5432"
 
     # Try with postgres user as fallback
     echo "Attempting pg_basebackup with postgres user as fallback..."
-    if gosu postgres pg_basebackup -h ${MASTER_HOST} -D /var/lib/postgresql/data -U postgres -R -P -X stream -v; then
+    if gosu postgres pg_basebackup -h ${PRIMARY_HOST} -D /var/lib/postgresql/data -U postgres -R -P -X stream -v; then
         echo "✅ pg_basebackup succeeded with postgres user!"
         BASEBACKUP_SUCCESS=true
     else
@@ -90,7 +90,7 @@ echo "Detected PostgreSQL version: $PG_VERSION"
 
 cat >> /var/lib/postgresql/data/postgresql.conf << EOF
 # Standby settings
-primary_conninfo = 'host=${MASTER_HOST} port=5432 user=citus password=citus'
+primary_conninfo = 'host=${PRIMARY_HOST} port=5432 user=citus password=citus'
 hot_standby = on
 max_standby_streaming_delay = 30s
 EOF

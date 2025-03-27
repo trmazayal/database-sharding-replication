@@ -38,29 +38,29 @@ echo "Starting Citus cluster setup..."
 wait_for coordinator_primary 5432 30 || { echo "ERROR: Primary coordinator not ready. Exiting."; exit 1; }
 wait_for coordinator_secondary 5432 30 || { echo "ERROR: Secondary coordinator not ready. Exiting."; exit 1; }
 
-# Wait for master worker nodes (required to continue)
-wait_for worker1_master 5432 20 || { echo "ERROR: Worker1 master not ready. Exiting."; exit 1; }
-wait_for worker2_master 5432 20 || { echo "ERROR: Worker2 master not ready. Exiting."; exit 1; }
-wait_for worker3_master 5432 20 || { echo "ERROR: Worker3 master not ready. Exiting."; exit 1; }
+# Wait for primary worker nodes (required to continue)
+wait_for worker1_primary 5432 20 || { echo "ERROR: Worker1 primary not ready. Exiting."; exit 1; }
+wait_for worker2_primary 5432 20 || { echo "ERROR: Worker2 primary not ready. Exiting."; exit 1; }
+wait_for worker3_primary 5432 20 || { echo "ERROR: Worker3 primary not ready. Exiting."; exit 1; }
 
-# Try waiting for slave worker nodes but continue if not available
-echo "Checking slave worker nodes (will continue even if not ready)..."
-wait_for worker1_slave 5432 10 || echo "WARNING: Worker1 slave not ready, continuing without it."
-wait_for worker2_slave 5432 10 || echo "WARNING: Worker2 slave not ready, continuing without it."
-wait_for worker3_slave 5432 10 || echo "WARNING: Worker3 slave not ready, continuing without it."
+# Try waiting for secondary worker nodes but continue if not available
+echo "Checking secondary worker nodes (will continue even if not ready)..."
+wait_for worker1_secondary 5432 10 || echo "WARNING: Worker1 secondary not ready, continuing without it."
+wait_for worker2_secondary 5432 10 || echo "WARNING: Worker2 secondary not ready, continuing without it."
+wait_for worker3_secondary 5432 10 || echo "WARNING: Worker3 secondary not ready, continuing without it."
 
 echo "All required nodes are ready. Configuring Citus cluster..."
 
-# Create the Citus extension on coordinators and master worker nodes
-echo "Creating Citus extension on coordinators and master worker nodes..."
-for node in coordinator_primary coordinator_secondary worker1_master worker2_master worker3_master; do
+# Create the Citus extension on coordinators and primary worker nodes
+echo "Creating Citus extension on coordinators and primary worker nodes..."
+for node in coordinator_primary coordinator_secondary worker1_primary worker2_primary worker3_primary; do
   echo "Creating Citus extension on $node..."
   psql -h $node -U citus -d citus -c "CREATE EXTENSION IF NOT EXISTS citus;"
 done
 
-# Create the PostGIS extension on coordinators and master worker nodes only
-echo "Creating PostGIS extension on coordinators and master worker nodes..."
-for node in coordinator_primary coordinator_secondary worker1_master worker2_master worker3_master; do
+# Create the PostGIS extension on coordinators and primary worker nodes only
+echo "Creating PostGIS extension on coordinators and primary worker nodes..."
+for node in coordinator_primary coordinator_secondary worker1_primary worker2_primary worker3_primary; do
   echo "Creating PostGIS extension on $node..."
   psql -h $node -U citus -d citus -c "CREATE EXTENSION IF NOT EXISTS postgis;"
 done
@@ -79,10 +79,10 @@ for coordinator in coordinator_primary coordinator_secondary; do
   # Reload configuration
   psql -h $coordinator -U citus -d citus -c "SELECT pg_reload_conf();"
 
-  # Add master workers to the Citus cluster
-  psql -h $coordinator -U citus -d citus -c "SELECT * FROM citus_add_node('worker1_master', 5432);"
-  psql -h $coordinator -U citus -d citus -c "SELECT * FROM citus_add_node('worker2_master', 5432);"
-  psql -h $coordinator -U citus -d citus -c "SELECT * FROM citus_add_node('worker3_master', 5432);"
+  # Add primary workers to the Citus cluster
+  psql -h $coordinator -U citus -d citus -c "SELECT * FROM citus_add_node('worker1_primary', 5432);"
+  psql -h $coordinator -U citus -d citus -c "SELECT * FROM citus_add_node('worker2_primary', 5432);"
+  psql -h $coordinator -U citus -d citus -c "SELECT * FROM citus_add_node('worker3_primary', 5432);"
 done
 
 # Verify replication setup
@@ -92,6 +92,6 @@ psql -h coordinator_primary -U citus -d citus -c "SELECT nodename, nodeport, nod
 echo "Verifying replication setup on secondary coordinator..."
 psql -h coordinator_secondary -U citus -d citus -c "SELECT nodename, nodeport, noderack FROM pg_dist_node;"
 
-echo "Master-Slave Citus cluster setup complete."
-echo "Worker slaves are configured as hot standby nodes for their respective masters."
+echo "Primary-Secondary Citus cluster setup complete."
+echo "Worker secondarys are configured as hot standby nodes for their respective primarys."
 echo "You can connect to the cluster through the load balancer at localhost:5432"

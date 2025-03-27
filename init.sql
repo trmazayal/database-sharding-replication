@@ -48,7 +48,7 @@ SELECT count(*) FROM vehicle_locations;
 
 SELECT * FROM pg_dist_shard;
 
-SELECT * FROM master_get_active_worker_nodes();
+SELECT * FROM primary_get_active_worker_nodes();
 
 EXPLAIN ANALYZE
 SELECT id, vehicle_id, recorded_at, region_code

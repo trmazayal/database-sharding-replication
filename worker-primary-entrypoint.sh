@@ -1,11 +1,11 @@
 #!/bin/bash
 set -e
 
-echo "Starting worker master initialization..."
+echo "Starting worker primary initialization..."
 
 # Check if PostgreSQL is already initialized
 if [ ! -s "/var/lib/postgresql/data/PG_VERSION" ]; then
-    echo "📥 Initializing worker master PostgreSQL data directory..."
+    echo "📥 Initializing worker primary PostgreSQL data directory..."
 
     # Set environment variables
     POSTGRES_USER=${POSTGRES_USER:-citus}
@@ -22,7 +22,7 @@ if [ ! -s "/var/lib/postgresql/data/PG_VERSION" ]; then
     echo "📝 Configuring PostgreSQL for replication..."
     cat >> /var/lib/postgresql/data/postgresql.conf << EOF
 
-# Worker master configuration for replication
+# Worker primary configuration for replication
 listen_addresses = '*'
 wal_level = logical
 max_wal_senders = 10
@@ -79,5 +79,5 @@ else
     echo "📝 PostgreSQL data directory already exists."
 fi
 
-echo "✅ Starting worker master PostgreSQL node..."
+echo "✅ Starting worker primary PostgreSQL node..."
 exec gosu postgres postgres
