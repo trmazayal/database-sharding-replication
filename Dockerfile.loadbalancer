@@ -3,11 +3,22 @@ FROM haproxy:latest
 # Switch to root for package installation
 USER root
 
-# Install PostgreSQL client tools
+# Add PostgreSQL apt repository to get the specific client version
+RUN apt-get update && apt-get install -y gnupg2 lsb-release && \
+    echo "deb http://apt.postgresql.org/pub/repos/apt/ $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list && \
+    curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | apt-key add -
+
+# Install PostgreSQL client tools (multiple versions for compatibility)
 RUN apt-get update && \
-    apt-get install -y postgresql-client && \
+    apt-get install -y postgresql-client postgresql-client-15 postgresql-client-14 postgresql-client-13 && \
+    apt-mark hold postgresql-client postgresql-client-15 postgresql-client-14 postgresql-client-13 && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
+
+# Create a symbolic link for pgbench if not already present
+RUN if [ ! -f /usr/bin/pgbench ] && [ -f /usr/lib/postgresql/*/bin/pgbench ]; then \
+        ln -s $(find /usr/lib/postgresql -name pgbench -type f | head -1) /usr/bin/pgbench; \
+    fi
 
 # Return to haproxy user if necessary (uncomment if needed)
 # USER haproxy

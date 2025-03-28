@@ -10,6 +10,7 @@ The cluster is composed of multiple PostgreSQL nodes with Citus and PostGIS exte
 ## Prerequisites
 
 - Docker and Docker Compose installed on your machine.
+- Python 3 with matplotlib, pandas, and numpy packages (for visualization)
 
 ## Setup
 
@@ -101,25 +102,50 @@ The project includes several benchmark scripts to evaluate performance and high 
 
 ### Running Benchmarks
 
-1. Standard benchmark (tests query performance and concurrency):
+1. Run all benchmarks and generate visualizations:
    ```bash
+   ./run-benchmarks.sh
+   ```
+
+   This script will:
+   - Run all benchmark types
+   - Generate CSV data in the benchmark_results directory
+   - Create visualizations using matplotlib
+   - Generate an HTML report with all graphs
+
+2. Or run individual benchmarks:
+   ```bash
+   # Standard benchmark (tests query performance and concurrency)
    ./benchmark.sh
-   ```
 
-2. Worker node benchmark (compares performance across different nodes):
-   ```bash
+   # Worker node benchmark (compares performance across different nodes)
    ./worker-benchmark.sh
-   ```
 
-3. High availability benchmark (tests failure recovery):
-   ```bash
+   # High availability benchmark (tests failure recovery)
    ./ha-benchmark.sh
+
+   # Generate visualizations from benchmark results
+   python3 visualize_benchmarks.py
    ```
 
 Make sure the permissions are set correctly:
    ```bash
-   chmod +x benchmark.sh worker-benchmark.sh ha-benchmark.sh
+   chmod +x benchmark.sh worker-benchmark.sh ha-benchmark.sh run-benchmarks.sh
    ```
+
+### Visualization
+
+The benchmarks generate CSV files that are processed by the visualization script to create:
+
+1. Bar charts of query performance
+2. Line graphs showing iteration performance
+3. Worker node comparison charts
+4. High availability success/failure rate graphs
+
+The visualization requires Python with matplotlib, pandas, and numpy packages:
+```bash
+pip3 install matplotlib pandas numpy
+```
 
 ### What's Being Tested
 
@@ -144,6 +170,8 @@ Make sure the permissions are set correctly:
 - setup.sh: Initializes the cluster configuration.
 - haproxy.cfg: Load balancer configuration.
 - init.sql: Creates and populates a distributed table for testing.
+- benchmark.sh, worker-benchmark.sh, ha-benchmark.sh: Performance benchmarks.
+- visualize_benchmarks.py: Creates graphical reports of benchmark results.
 
 ## Troubleshooting
 

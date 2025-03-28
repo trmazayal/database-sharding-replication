@@ -22,6 +22,17 @@ YELLOW='\033[0;33m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
+# CSV output file
+RESULTS_DIR="benchmark_results"
+WORKER_CSV="${RESULTS_DIR}/worker_benchmark_results.csv"
+
+# Create results directory
+mkdir -p ${RESULTS_DIR}
+mkdir -p ${RESULTS_DIR}/graphs
+
+# Initialize CSV with header
+echo "query,node,real_time,user_time,sys_time" > "${WORKER_CSV}"
+
 echo -e "${GREEN}Starting Worker Node Benchmark${NC}"
 echo "================================================"
 
@@ -53,17 +64,33 @@ compare_hosts() {
 
     # Run on coordinator
     echo -e "\n${YELLOW}Running on coordinator...${NC}"
-    time docker_psql $COORDINATOR_HOST -c "$query" > /dev/null
+    local cmd_output=$( { time docker_psql $COORDINATOR_HOST -c "$query" > /dev/null; } 2>&1 )
+    local real_time=$(echo "$cmd_output" | grep "real" | awk '{print $2}')
+    local user_time=$(echo "$cmd_output" | grep "user" | awk '{print $2}')
+    local sys_time=$(echo "$cmd_output" | grep "sys" | awk '{print $2}')
+    echo "$description,coordinator,$real_time,$user_time,$sys_time" >> "${WORKER_CSV}"
 
     # Run on each worker
     echo -e "\n${YELLOW}Running on worker1...${NC}"
-    time docker_psql $WORKER1_HOST -c "$query" > /dev/null
+    cmd_output=$( { time docker_psql $WORKER1_HOST -c "$query" > /dev/null; } 2>&1 )
+    real_time=$(echo "$cmd_output" | grep "real" | awk '{print $2}')
+    user_time=$(echo "$cmd_output" | grep "user" | awk '{print $2}')
+    sys_time=$(echo "$cmd_output" | grep "sys" | awk '{print $2}')
+    echo "$description,worker1,$real_time,$user_time,$sys_time" >> "${WORKER_CSV}"
 
     echo -e "\n${YELLOW}Running on worker2...${NC}"
-    time docker_psql $WORKER2_HOST -c "$query" > /dev/null
+    cmd_output=$( { time docker_psql $WORKER2_HOST -c "$query" > /dev/null; } 2>&1 )
+    real_time=$(echo "$cmd_output" | grep "real" | awk '{print $2}')
+    user_time=$(echo "$cmd_output" | grep "user" | awk '{print $2}')
+    sys_time=$(echo "$cmd_output" | grep "sys" | awk '{print $2}')
+    echo "$description,worker2,$real_time,$user_time,$sys_time" >> "${WORKER_CSV}"
 
     echo -e "\n${YELLOW}Running on worker3...${NC}"
-    time docker_psql $WORKER3_HOST -c "$query" > /dev/null
+    cmd_output=$( { time docker_psql $WORKER3_HOST -c "$query" > /dev/null; } 2>&1 )
+    real_time=$(echo "$cmd_output" | grep "real" | awk '{print $2}')
+    user_time=$(echo "$cmd_output" | grep "user" | awk '{print $2}')
+    sys_time=$(echo "$cmd_output" | grep "sys" | awk '{print $2}')
+    echo "$description,worker3,$real_time,$user_time,$sys_time" >> "${WORKER_CSV}"
 }
 
 # Get info about the cluster
@@ -85,4 +112,5 @@ compare_hosts "SELECT COUNT(*) FROM benchmark_points WHERE region_id = 1;" "Simp
 compare_hosts "EXPLAIN ANALYZE SELECT COUNT(*) FROM benchmark_points WHERE region_id = 1;" "Explain analyze for single region" || true
 
 echo -e "\n${GREEN}Worker benchmark complete!${NC}"
+echo "Results saved to ${WORKER_CSV} for visualization"
 echo "================================================"

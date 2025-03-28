@@ -19,6 +19,17 @@ YELLOW='\033[0;33m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
+# CSV output file
+RESULTS_DIR="benchmark_results"
+HA_CSV="${RESULTS_DIR}/ha_benchmark_results.csv"
+
+# Create results directory
+mkdir -p ${RESULTS_DIR}
+mkdir -p ${RESULTS_DIR}/graphs
+
+# Initialize CSV with header
+echo "scenario,total_queries,error_count,success_rate" > "${HA_CSV}"
+
 echo -e "${GREEN}Starting High Availability Benchmark${NC}"
 echo "================================================"
 
@@ -49,7 +60,13 @@ run_continuous_queries() {
     echo -e "${GREEN}Total successful queries: $query_count${NC}"
     echo -e "${RED}Total failed queries: $error_count${NC}"
 
-    return $error_count
+    local total=$((query_count + error_count))
+    local success_rate=0
+    if [ $total -gt 0 ]; then
+        success_rate=$(echo "scale=2; ($query_count * 100) / $total" | bc)
+    fi
+
+    echo "$query_count $error_count $success_rate"
 }
 
 # Function to simulate a node failure
@@ -70,48 +87,24 @@ restore_node() {
     echo -e "${YELLOW}Node $node restarted${NC}"
 }
 
-# Function to test queries when worker is down
-test_worker_down_queries() {
-    local worker=$1
-    local duration=$2
-    local end_time=$((SECONDS + duration))
-    local query_count=0
-    local error_count=0
-
-    echo -e "${YELLOW}Running queries with worker $worker down for $duration seconds...${NC}"
-
-    while [ $SECONDS -lt $end_time ]; do
-        if docker exec -i $CONTAINER psql -h $HOST -p $PORT -U $USER -d $DB -c "SELECT COUNT(*) FROM benchmark_points LIMIT 1;" &> /dev/null; then
-            query_count=$((query_count + 1))
-        else
-            error_count=$((error_count + 1))
-            echo -e "${RED}Query error occurred${NC}"
-        fi
-        sleep 0.2
-    done
-
-    echo -e "${GREEN}Total successful queries: $query_count${NC}"
-    echo -e "${RED}Total failed queries: $error_count${NC}"
-
-    return $error_count
-}
-
 # Initial test to verify connectivity
 echo -e "${YELLOW}Testing initial connectivity...${NC}"
 docker_psql -c "SELECT nodename, nodeport FROM pg_dist_node;"
 
 # Run baseline benchmark
 echo -e "\n${YELLOW}Running baseline benchmark (30 seconds)...${NC}"
-run_continuous_queries 30
-baseline_errors=$?
+baseline_results=$(run_continuous_queries 30)
+read baseline_queries baseline_errors baseline_success <<< "$baseline_results"
+echo "Baseline,$(($baseline_queries + $baseline_errors)),$baseline_errors,$baseline_success" >> "${HA_CSV}"
 
 # Testing with worker down from the start
 echo -e "\n${RED}TESTING WITH WORKER NODE DOWN${NC}"
 simulate_node_failure "citus_worker2"
 
 echo -e "\n${YELLOW}Running queries with worker node down...${NC}"
-test_worker_down_queries "citus_worker2" 30
-worker_down_errors=$?
+worker_down_results=$(run_continuous_queries 30)
+read worker_down_queries worker_down_errors worker_down_success <<< "$worker_down_results"
+echo "Worker Down,$(($worker_down_queries + $worker_down_errors)),$worker_down_errors,$worker_down_success" >> "${HA_CSV}"
 
 # Restore worker node
 restore_node "citus_worker2"
@@ -121,20 +114,17 @@ sleep 10
 # Simulate coordinator primary failure
 echo -e "\n${RED}TESTING PRIMARY COORDINATOR FAILURE${NC}"
 echo -e "${YELLOW}Starting continuous queries...${NC}"
-run_continuous_queries 5 &
-BG_PID=$!
-sleep 2
+coordinator_failure_results=$(run_continuous_queries 5)
+read coordinator_failure_queries coordinator_failure_errors coordinator_failure_success <<< "$coordinator_failure_results"
+echo "Coordinator Failure Start,$((coordinator_failure_queries + coordinator_failure_errors)),$coordinator_failure_errors,$coordinator_failure_success" >> "${HA_CSV}"
 
 simulate_node_failure "citus_coordinator_primary"
 
-# Wait for background process to complete
-wait $BG_PID
-coordinator_primary_errors=$?
-
 # Verify cluster is still operational
 echo -e "\n${YELLOW}Verifying cluster operation after primary coordinator failure...${NC}"
-run_continuous_queries 20
-after_primary_errors=$?
+after_primary_results=$(run_continuous_queries 20)
+read after_primary_queries after_primary_errors after_primary_success <<< "$after_primary_results"
+echo "After Coordinator Failure,$((after_primary_queries + after_primary_errors)),$after_primary_errors,$after_primary_success" >> "${HA_CSV}"
 
 # Restore primary coordinator
 restore_node "citus_coordinator_primary"
@@ -142,20 +132,17 @@ restore_node "citus_coordinator_primary"
 # Simulate worker node failure
 echo -e "\n${RED}TESTING WORKER NODE FAILURE${NC}"
 echo -e "${YELLOW}Starting continuous queries...${NC}"
-run_continuous_queries 5 &
-BG_PID=$!
-sleep 2
+worker_failure_results=$(run_continuous_queries 5)
+read worker_failure_queries worker_failure_errors worker_failure_success <<< "$worker_failure_results"
+echo "Worker Failure Start,$((worker_failure_queries + worker_failure_errors)),$worker_failure_errors,$worker_failure_success" >> "${HA_CSV}"
 
 simulate_node_failure "citus_worker1"
 
-# Wait for background process to complete
-wait $BG_PID
-worker_failure_errors=$?
-
 # Verify cluster is still operational
 echo -e "\n${YELLOW}Verifying cluster operation after worker failure...${NC}"
-run_continuous_queries 20
-after_worker_errors=$?
+after_worker_results=$(run_continuous_queries 20)
+read after_worker_queries after_worker_errors after_worker_success <<< "$after_worker_results"
+echo "After Worker Failure,$((after_worker_queries + after_worker_errors)),$after_worker_errors,$after_worker_success" >> "${HA_CSV}"
 
 # Restore worker node
 restore_node "citus_worker1"
@@ -166,17 +153,14 @@ docker_psql -c "SELECT nodename, nodeport, noderole FROM pg_dist_node;"
 
 echo -e "\n${GREEN}High Availability Benchmark Results:${NC}"
 echo "================================================"
-echo -e "Baseline errors: ${RED}$baseline_errors${NC}"
-echo -e "Errors with worker node down: ${RED}$worker_down_errors${NC}"
-echo -e "Errors during coordinator primary failure: ${RED}$coordinator_primary_errors${NC}"
-echo -e "Errors after coordinator primary failure: ${RED}$after_primary_errors${NC}"
-echo -e "Errors during worker failure: ${RED}$worker_failure_errors${NC}"
-echo -e "Errors after worker failure: ${RED}$after_worker_errors${NC}"
+echo -e "Results saved to $HA_CSV for visualization"
 echo "================================================"
 
 # Calculate availability percentage
-total_queries=$((baseline_errors + worker_down_errors + coordinator_primary_errors + after_primary_errors + worker_failure_errors + after_worker_errors))
-if [ $total_queries -gt 0 ]; then
-    availability=$(echo "scale=4; (1 - ($coordinator_primary_errors + $worker_failure_errors + $worker_down_errors) / $total_queries) * 100" | bc)
+total_queries=$((baseline_queries + worker_down_queries + coordinator_failure_queries + after_primary_queries + worker_failure_queries + after_worker_queries))
+total_errors=$((baseline_errors + worker_down_errors + coordinator_failure_errors + after_primary_errors + worker_failure_errors + after_worker_errors))
+
+if [ $((total_queries + total_errors)) -gt 0 ]; then
+    availability=$(echo "scale=4; (1 - ($total_errors / ($total_queries + $total_errors))) * 100" | bc)
     echo -e "${GREEN}Estimated availability: $availability%${NC}"
 fi
