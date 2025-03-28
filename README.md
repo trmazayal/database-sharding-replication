@@ -95,6 +95,41 @@ The cluster is composed of multiple PostgreSQL nodes with Citus and PostGIS exte
         ST_MakeEnvelope(-74.0, 40.7, -73.9, 40.8, 4326)
     );
 
+## Benchmarking
+
+The project includes several benchmark scripts to evaluate performance and high availability:
+
+### Running Benchmarks
+
+1. Standard benchmark (tests query performance and concurrency):
+   ```bash
+   ./benchmark.sh
+   ```
+
+2. Worker node benchmark (compares performance across different nodes):
+   ```bash
+   ./worker-benchmark.sh
+   ```
+
+3. High availability benchmark (tests failure recovery):
+   ```bash
+   ./ha-benchmark.sh
+   ```
+
+Make sure the permissions are set correctly:
+   ```bash
+   chmod +x benchmark.sh worker-benchmark.sh ha-benchmark.sh
+   ```
+
+### What's Being Tested
+
+- Single query performance for various query types
+- Concurrent query performance with different levels of concurrency
+- Data distribution across the cluster
+- Spatial query performance
+- High availability during node failures
+- Recovery times
+
 ## Component Breakdown
 
 - Coordinator Nodes: Primary and secondary PostgreSQL servers running Citus.
