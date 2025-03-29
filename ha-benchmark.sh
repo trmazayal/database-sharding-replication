@@ -45,20 +45,21 @@ run_continuous_queries() {
     local query_count=0
     local error_count=0
 
-    echo -e "${YELLOW}Running continuous queries for $duration seconds...${NC}"
+    # Send log output to stderr so stdout remains clean for numeric output
+    echo -e "${YELLOW}Running continuous queries for $duration seconds...${NC}" >&2
 
     while [ $SECONDS -lt $end_time ]; do
-        if docker exec -i $CONTAINER psql -h $HOST -p $PORT -U $USER -d $DB -c "SELECT COUNT(*) FROM benchmark_points LIMIT 1;" &> /dev/null; then
+        if docker exec -i $CONTAINER psql -h $HOST -p $PORT -U $USER -d $DB -c "SELECT COUNT(*) FROM vehicle_locations LIMIT 1;" &> /dev/null; then
             query_count=$((query_count + 1))
         else
             error_count=$((error_count + 1))
-            echo -e "${RED}Query error occurred${NC}"
+            echo -e "${RED}Query error occurred${NC}" >&2
         fi
         sleep 0.2
     done
 
-    echo -e "${GREEN}Total successful queries: $query_count${NC}"
-    echo -e "${RED}Total failed queries: $error_count${NC}"
+    echo -e "${GREEN}Total successful queries: $query_count${NC}" >&2
+    echo -e "${RED}Total failed queries: $error_count${NC}" >&2
 
     local total=$((query_count + error_count))
     local success_rate=0
@@ -66,7 +67,8 @@ run_continuous_queries() {
         success_rate=$(echo "scale=2; ($query_count * 100) / $total" | bc)
     fi
 
-    echo "$query_count $error_count $success_rate"
+    # Only output the numeric result on stdout
+    printf "%d %d %0.2f\n" "$query_count" "$error_count" "$success_rate"
 }
 
 # Function to simulate a node failure
@@ -94,7 +96,7 @@ docker_psql -c "SELECT nodename, nodeport FROM pg_dist_node;"
 # Run baseline benchmark
 echo -e "\n${YELLOW}Running baseline benchmark (30 seconds)...${NC}"
 baseline_results=$(run_continuous_queries 30)
-read baseline_queries baseline_errors baseline_success <<< "$baseline_results"
+read -r baseline_queries baseline_errors baseline_success <<< "$baseline_results"
 echo "Baseline,$(($baseline_queries + $baseline_errors)),$baseline_errors,$baseline_success" >> "${HA_CSV}"
 
 # Testing with worker down from the start
@@ -103,7 +105,7 @@ simulate_node_failure "citus_worker2"
 
 echo -e "\n${YELLOW}Running queries with worker node down...${NC}"
 worker_down_results=$(run_continuous_queries 30)
-read worker_down_queries worker_down_errors worker_down_success <<< "$worker_down_results"
+read -r worker_down_queries worker_down_errors worker_down_success <<< "$worker_down_results"
 echo "Worker Down,$(($worker_down_queries + $worker_down_errors)),$worker_down_errors,$worker_down_success" >> "${HA_CSV}"
 
 # Restore worker node
@@ -115,7 +117,7 @@ sleep 10
 echo -e "\n${RED}TESTING PRIMARY COORDINATOR FAILURE${NC}"
 echo -e "${YELLOW}Starting continuous queries...${NC}"
 coordinator_failure_results=$(run_continuous_queries 5)
-read coordinator_failure_queries coordinator_failure_errors coordinator_failure_success <<< "$coordinator_failure_results"
+read -r coordinator_failure_queries coordinator_failure_errors coordinator_failure_success <<< "$coordinator_failure_results"
 echo "Coordinator Failure Start,$((coordinator_failure_queries + coordinator_failure_errors)),$coordinator_failure_errors,$coordinator_failure_success" >> "${HA_CSV}"
 
 simulate_node_failure "citus_coordinator_primary"
@@ -123,7 +125,7 @@ simulate_node_failure "citus_coordinator_primary"
 # Verify cluster is still operational
 echo -e "\n${YELLOW}Verifying cluster operation after primary coordinator failure...${NC}"
 after_primary_results=$(run_continuous_queries 20)
-read after_primary_queries after_primary_errors after_primary_success <<< "$after_primary_results"
+read -r after_primary_queries after_primary_errors after_primary_success <<< "$after_primary_results"
 echo "After Coordinator Failure,$((after_primary_queries + after_primary_errors)),$after_primary_errors,$after_primary_success" >> "${HA_CSV}"
 
 # Restore primary coordinator
@@ -133,7 +135,7 @@ restore_node "citus_coordinator_primary"
 echo -e "\n${RED}TESTING WORKER NODE FAILURE${NC}"
 echo -e "${YELLOW}Starting continuous queries...${NC}"
 worker_failure_results=$(run_continuous_queries 5)
-read worker_failure_queries worker_failure_errors worker_failure_success <<< "$worker_failure_results"
+read -r worker_failure_queries worker_failure_errors worker_failure_success <<< "$worker_failure_results"
 echo "Worker Failure Start,$((worker_failure_queries + worker_failure_errors)),$worker_failure_errors,$worker_failure_success" >> "${HA_CSV}"
 
 simulate_node_failure "citus_worker1"
@@ -141,7 +143,7 @@ simulate_node_failure "citus_worker1"
 # Verify cluster is still operational
 echo -e "\n${YELLOW}Verifying cluster operation after worker failure...${NC}"
 after_worker_results=$(run_continuous_queries 20)
-read after_worker_queries after_worker_errors after_worker_success <<< "$after_worker_results"
+read -r after_worker_queries after_worker_errors after_worker_success <<< "$after_worker_results"
 echo "After Worker Failure,$((after_worker_queries + after_worker_errors)),$after_worker_errors,$after_worker_success" >> "${HA_CSV}"
 
 # Restore worker node

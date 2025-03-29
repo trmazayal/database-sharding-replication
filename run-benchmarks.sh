@@ -26,6 +26,12 @@ echo -e "${YELLOW}Running pre-benchmark checks...${NC}"
     exit 1
 }
 
+# Fix pgbench installation issues
+echo -e "${YELLOW}Fixing pgbench installation if needed...${NC}"
+./fix-pgbench.sh || {
+    echo -e "${RED}Failed to fix pgbench issues. Some benchmarks may not work correctly.${NC}"
+}
+
 # Run all benchmark scripts
 echo -e "${GREEN}Starting benchmark suite...${NC}"
 echo "================================================"

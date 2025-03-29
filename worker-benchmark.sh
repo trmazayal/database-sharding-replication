@@ -55,10 +55,10 @@ compare_hosts() {
     echo "Query: $query"
 
     # First check if the benchmark table exists
-    local table_check=$(docker exec -i $CONTAINER psql -h $COORDINATOR_HOST -p $PORT -U $USER -d $DB -t -c "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'benchmark_points');" 2>/dev/null | tr -d ' ')
+    local table_check=$(docker exec -i $CONTAINER psql -h $COORDINATOR_HOST -p $PORT -U $USER -d $DB -t -c "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'vehicle_locations');" 2>/dev/null | tr -d ' ')
 
     if [ "$table_check" != "t" ]; then
-        echo -e "${RED}Table benchmark_points does not exist. Please run the main benchmark script first.${NC}"
+        echo -e "${RED}Table vehicle_locations does not exist. Please run the main benchmark script first.${NC}"
         return 1
     fi
 
@@ -98,18 +98,32 @@ echo -e "${YELLOW}Cluster information:${NC}"
 docker_psql $COORDINATOR_HOST -c "SELECT * FROM pg_dist_node;"
 docker_psql $COORDINATOR_HOST -c "SELECT count(*) FROM pg_dist_shard;"
 
-# Check if benchmark table exists before running queries
-table_exists=$(docker exec -i $CONTAINER psql -h $COORDINATOR_HOST -p $PORT -U $USER -d $DB -t -c "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'benchmark_points');" 2>/dev/null | tr -d ' ')
+# Check if vehicle_locations table exists before running queries
+table_exists=$(docker exec -i $CONTAINER psql -h $COORDINATOR_HOST -p $PORT -U $USER -d $DB -t -c "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'vehicle_locations');" 2>/dev/null | tr -d ' ')
 
 if [ "$table_exists" != "t" ]; then
-    echo -e "${RED}Table benchmark_points does not exist. Please run the main benchmark script first.${NC}"
+    echo -e "${RED}Table vehicle_locations does not exist. Please run the main benchmark script first.${NC}"
     exit 1
 fi
 
 # Compare query execution across nodes
-compare_hosts "SELECT COUNT(*) FROM benchmark_points WHERE region_id = 1;" "Simple count query for single region" || true
+compare_hosts "SELECT COUNT(*) FROM vehicle_locations WHERE region_code = 'region_north';" "Simple count query for single region" || true
 
-compare_hosts "EXPLAIN ANALYZE SELECT COUNT(*) FROM benchmark_points WHERE region_id = 1;" "Explain analyze for single region" || true
+compare_hosts "EXPLAIN ANALYZE SELECT COUNT(*) FROM vehicle_locations WHERE region_code = 'region_north';" "Explain analyze for single region" || true
+
+# Add spatial queries
+compare_hosts "SELECT COUNT(*) FROM vehicle_locations
+WHERE ST_DWithin(
+        location::geography,
+        ST_SetSRID(ST_MakePoint(-73.9857, 40.7484), 4326)::geography,
+        5000
+    );" "Spatial query - vehicles within 5km" || true
+
+compare_hosts "SELECT COUNT(*) FROM vehicle_locations
+WHERE ST_Within(
+    location,
+    ST_MakeEnvelope(-74.0, 40.7, -73.9, 40.8, 4326)
+);" "Bounding box query" || true
 
 echo -e "\n${GREEN}Worker benchmark complete!${NC}"
 echo "Results saved to ${WORKER_CSV} for visualization"
