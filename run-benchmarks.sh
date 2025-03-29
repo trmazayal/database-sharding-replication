@@ -9,9 +9,9 @@ NC='\033[0m' # No Color
 
 # Check for required Python packages
 echo -e "${YELLOW}Checking for required Python packages...${NC}"
-pip3 install --quiet matplotlib pandas numpy || {
+pip3 install --quiet matplotlib pandas numpy seaborn || {
     echo -e "${RED}Error installing required Python packages.${NC}"
-    echo "Please run: pip3 install matplotlib pandas numpy"
+    echo "Please run: pip3 install matplotlib pandas numpy seaborn"
     exit 1
 }
 
@@ -43,6 +43,10 @@ echo -e "${YELLOW}Running standard benchmarks...${NC}"
 # Worker benchmarks
 echo -e "\n${YELLOW}Running worker node benchmarks...${NC}"
 ./worker-benchmark.sh
+
+# Read/Write latency benchmarks
+echo -e "\n${YELLOW}Running read/write latency benchmarks...${NC}"
+./latency-benchmark.sh
 
 # High availability benchmarks (if available)
 if [ -f "./ha-benchmark.sh" ]; then

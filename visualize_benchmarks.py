@@ -4,6 +4,7 @@ import pandas as pd
 import os
 import numpy as np
 from datetime import datetime
+import seaborn as sns
 
 # Set style for plots
 plt.style.use('ggplot')
@@ -213,6 +214,110 @@ def plot_ha_results():
     plt.savefig(f"{OUTPUT_DIR}/ha_success_rates.png", dpi=150)
     print(f"Saved to {OUTPUT_DIR}/ha_success_rates.png")
 
+def plot_latency_results():
+    """Plot read/write latency benchmark results"""
+    csv_path = f"{RESULTS_DIR}/latency_benchmark_results.csv"
+    if not os.path.exists(csv_path):
+        print(f"File not found: {csv_path}")
+        return
+
+    print(f"Visualizing read/write latency benchmark results from {csv_path}")
+    df = pd.read_csv(csv_path)
+
+    # Separate read and write operations
+    read_df = df[df['operation_type'] == 'read']
+    write_df = df[df['operation_type'] == 'write']
+
+    # Plot read operations by batch size
+    plt.figure(figsize=(12, 7))
+    operations = read_df['operation'].unique()
+
+    # Create a grouped bar chart for read latencies
+    batch_sizes = sorted(read_df['batch_size'].unique())
+    x = np.arange(len(operations))
+    width = 0.8 / len(batch_sizes)
+
+    for i, size in enumerate(batch_sizes):
+        latencies = []
+        for op in operations:
+            op_data = read_df[(read_df['operation'] == op) & (read_df['batch_size'] == size)]
+            if len(op_data) > 0:
+                latencies.append(op_data['latency_ms'].values[0])
+            else:
+                latencies.append(0)
+
+        offset = width * (i - len(batch_sizes)/2 + 0.5)
+        plt.bar(x + offset, latencies, width, label=f'Size: {size}')
+
+    plt.title('Read Operation Latency by Type and Size', fontsize=15)
+    plt.ylabel('Latency (ms)', fontsize=12)
+    plt.xticks(x, operations, rotation=45, ha='right')
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(f"{OUTPUT_DIR}/read_latency.png", dpi=150)
+    print(f"Saved to {OUTPUT_DIR}/read_latency.png")
+
+    # Plot write operations by batch size
+    plt.figure(figsize=(12, 7))
+    operations = write_df['operation'].unique()
+
+    # Create a grouped bar chart for write latencies
+    batch_sizes = sorted(write_df['batch_size'].unique())
+    x = np.arange(len(operations))
+    width = 0.8 / len(batch_sizes)
+
+    for i, size in enumerate(batch_sizes):
+        latencies = []
+        for op in operations:
+            op_data = write_df[(write_df['operation'] == op) & (write_df['batch_size'] == size)]
+            if len(op_data) > 0:
+                latencies.append(op_data['latency_ms'].values[0])
+            else:
+                latencies.append(0)
+
+        offset = width * (i - len(batch_sizes)/2 + 0.5)
+        plt.bar(x + offset, latencies, width, label=f'Size: {size}')
+
+    plt.title('Write Operation Latency by Type and Size', fontsize=15)
+    plt.ylabel('Latency (ms)', fontsize=12)
+    plt.xticks(x, operations, rotation=45, ha='right')
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(f"{OUTPUT_DIR}/write_latency.png", dpi=150)
+    print(f"Saved to {OUTPUT_DIR}/write_latency.png")
+
+    # Plot throughput comparison
+    plt.figure(figsize=(14, 7))
+
+    # Group by operation and batch size
+    op_groups = df.groupby(['operation', 'batch_size', 'operation_type'])['throughput_per_sec'].mean().reset_index()
+
+    # Sort for better visualization
+    op_groups = op_groups.sort_values(['operation_type', 'operation', 'batch_size'])
+
+    # Create a categorical plot
+    sns_plot = sns.catplot(
+        data=op_groups,
+        kind="bar",
+        x="operation",
+        y="throughput_per_sec",
+        hue="batch_size",
+        col="operation_type",
+        height=5,
+        aspect=1.2,
+        palette="viridis",
+        legend_out=False
+    )
+
+    sns_plot.set_xticklabels(rotation=45, ha="right")
+    sns_plot.set_titles("{col_name} Operations")
+    sns_plot.set_axis_labels("Operation", "Throughput (ops/sec)")
+    sns_plot.fig.suptitle('Operation Throughput Comparison', fontsize=16)
+    sns_plot.fig.subplots_adjust(top=0.85)
+
+    plt.savefig(f"{OUTPUT_DIR}/operation_throughput.png", dpi=150)
+    print(f"Saved to {OUTPUT_DIR}/operation_throughput.png")
+
 def create_html_report():
     """Create an HTML report with all generated graphs"""
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -225,7 +330,10 @@ def create_html_report():
         "Concurrent TPS": "concurrent_tps.png",
         "Concurrent Latency": "concurrent_latency.png",
         "Worker Node Comparison": "worker_comparison.png",
-        "High Availability Success Rates": "ha_success_rates.png"
+        "High Availability Success Rates": "ha_success_rates.png",
+        "Read Latency": "read_latency.png",
+        "Write Latency": "write_latency.png",
+        "Operation Throughput Comparison": "operation_throughput.png"
     }
 
     for title, filename in graph_files.items():
@@ -291,6 +399,7 @@ if __name__ == "__main__":
     plot_concurrent_results()
     plot_worker_results()
     plot_ha_results()
+    plot_latency_results()
 
     # Create HTML report
     report_path = create_html_report()
