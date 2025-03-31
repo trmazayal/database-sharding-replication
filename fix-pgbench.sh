@@ -19,23 +19,13 @@ fi
 
 # Install PostgreSQL client packages using in-container variable expansion
 echo -e "${YELLOW}Installing PostgreSQL client packages...${NC}"
-if docker exec -i "$CONTAINER" bash -c 'apt-get update && \
-    apt-get install -y gnupg2 curl lsb-release ca-certificates && \
-    curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --batch --dearmor -o /usr/share/keyrings/postgresql-archive-keyring.gpg && \
-    CODENAME=$(lsb_release -cs) && \
-    echo "deb [signed-by=/usr/share/keyrings/postgresql-archive-keyring.gpg] http://apt.postgresql.org/pub/repos/apt/ ${CODENAME}-pgdg main" > /etc/apt/sources.list.d/pgdg.list && \
-    apt-get update && \
-    apt-get install -y postgresql-client-15 postgresql-client-common && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*'; then
-    echo -e "${GREEN}Main installation method succeeded.${NC}"
-else
-    echo -e "${RED}Failed to install using main method. Trying alternative approach...${NC}"
-    docker exec -i "$CONTAINER" bash -c 'CODENAME=$(grep VERSION_CODENAME /etc/os-release | cut -d= -f2) && \
-    echo "deb [signed-by=/usr/share/keyrings/postgresql-archive-keyring.gpg] http://apt.postgresql.org/pub/repos/apt/ ${CODENAME}-pgdg main" > /etc/apt/sources.list.d/pgdg.list && \
-    apt-get update && \
-    apt-get install -y postgresql-client-15 postgresql-client-common && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*'
-fi
+
+echo -e "${YELLOW}Adding PostgreSQL APT repository...${NC}"
+docker exec -i "$CONTAINER" bash -c 'CODENAME=$(grep VERSION_CODENAME /etc/os-release | cut -d= -f2) && \
+echo "deb [signed-by=/usr/share/keyrings/postgresql-archive-keyring.gpg] http://apt.postgresql.org/pub/repos/apt/ ${CODENAME}-pgdg main" > /etc/apt/sources.list.d/pgdg.list && \
+apt-get update && \
+apt-get install -y postgresql-client-15 postgresql-client-common && \
+apt-get clean && rm -rf /var/lib/apt/lists/*'
 
 # Find pgbench and create a symlink
 echo -e "${YELLOW}Creating symlink to pgbench...${NC}"

@@ -33,290 +33,385 @@ def plot_single_query_results():
     csv_path = f"{RESULTS_DIR}/single_query_results.csv"
     if not os.path.exists(csv_path):
         print(f"File not found: {csv_path}")
-        return
+        return False
 
-    print(f"Visualizing single query results from {csv_path}")
-    df = pd.read_csv(csv_path)
+    try:
+        print(f"Visualizing single query results from {csv_path}")
+        df = pd.read_csv(csv_path)
 
-    # Group by query_name and calculate statistics
-    query_stats = df.groupby('query_name')['execution_time'].agg(['mean', 'std', 'min', 'max'])
+        if df.empty or 'query_name' not in df.columns or 'execution_time' not in df.columns:
+            print(f"Warning: CSV format not as expected in {csv_path}")
+            return False
 
-    # Plot average execution time for each query
-    plt.figure(figsize=(12, 6))
-    ax = query_stats['mean'].plot(kind='bar', yerr=query_stats['std'], capsize=5)
-    plt.title('Average Query Execution Time', fontsize=15)
-    plt.ylabel('Execution Time (seconds)', fontsize=12)
-    plt.xlabel('Query', fontsize=12)
-    plt.xticks(rotation=45, ha='right')
-    plt.tight_layout()
+        # Group by query_name and calculate statistics
+        query_stats = df.groupby('query_name')['execution_time'].agg(['mean', 'std', 'min', 'max'])
 
-    # Add value labels on top of bars
-    for i, v in enumerate(query_stats['mean']):
-        ax.text(i, v + 0.1, f"{v:.3f}s", ha='center', fontweight='bold')
+        # Plot average execution time for each query
+        plt.figure(figsize=(12, 6))
+        ax = query_stats['mean'].plot(kind='bar', yerr=query_stats['std'], capsize=5)
+        plt.title('Average Query Execution Time', fontsize=15)
+        plt.ylabel('Execution Time (seconds)', fontsize=12)
+        plt.xlabel('Query', fontsize=12)
+        plt.xticks(rotation=45, ha='right')
+        plt.tight_layout()
 
-    plt.savefig(f"{OUTPUT_DIR}/single_query_performance.png", dpi=150)
-    print(f"Saved to {OUTPUT_DIR}/single_query_performance.png")
+        # Add value labels on top of bars
+        for i, v in enumerate(query_stats['mean']):
+            ax.text(i, v + 0.1, f"{v:.3f}s", ha='center', fontweight='bold')
 
-    # Plot execution time for each iteration of each query
-    plt.figure(figsize=(12, 6))
-    for query in df['query_name'].unique():
-        query_df = df[df['query_name'] == query]
-        plt.plot(query_df['iteration'], query_df['execution_time'], marker='o', label=query)
+        plt.savefig(f"{OUTPUT_DIR}/single_query_performance.png", dpi=150)
+        print(f"Saved to {OUTPUT_DIR}/single_query_performance.png")
 
-    plt.title('Query Execution Time by Iteration', fontsize=15)
-    plt.ylabel('Execution Time (seconds)', fontsize=12)
-    plt.xlabel('Iteration', fontsize=12)
-    plt.legend(loc='upper left', bbox_to_anchor=(1, 1))
-    plt.tight_layout()
-    plt.savefig(f"{OUTPUT_DIR}/query_performance_by_iteration.png", dpi=150)
-    print(f"Saved to {OUTPUT_DIR}/query_performance_by_iteration.png")
+        # Plot execution time for each iteration of each query
+        plt.figure(figsize=(12, 6))
+        for query in df['query_name'].unique():
+            query_df = df[df['query_name'] == query]
+            plt.plot(query_df['iteration'], query_df['execution_time'], marker='o', label=query)
+
+        plt.title('Query Execution Time by Iteration', fontsize=15)
+        plt.ylabel('Execution Time (seconds)', fontsize=12)
+        plt.xlabel('Iteration', fontsize=12)
+        plt.legend(loc='upper left', bbox_to_anchor=(1, 1))
+        plt.tight_layout()
+        plt.savefig(f"{OUTPUT_DIR}/query_performance_by_iteration.png", dpi=150)
+        print(f"Saved to {OUTPUT_DIR}/query_performance_by_iteration.png")
+        return True
+    except Exception as e:
+        print(f"Error plotting single query results: {e}")
+        return False
 
 def plot_concurrent_results():
     """Plot results from concurrent benchmark tests"""
     csv_path = f"{RESULTS_DIR}/concurrent_results.csv"
     if not os.path.exists(csv_path):
         print(f"File not found: {csv_path}")
-        return
+        return False
 
-    print(f"Visualizing concurrent benchmark results from {csv_path}")
-    df = pd.read_csv(csv_path)
+    try:
+        print(f"Visualizing concurrent benchmark results from {csv_path}")
+        df = pd.read_csv(csv_path)
 
-    # Plot TPS by number of clients for each test
-    plt.figure(figsize=(12, 6))
-    for test in df['test_name'].unique():
-        test_df = df[df['test_name'] == test].sort_values('clients')
-        plt.plot(test_df['clients'], test_df['tps'], marker='o', linewidth=2, label=test)
+        if df.empty or 'test_name' not in df.columns or 'clients' not in df.columns:
+            print(f"Warning: CSV format not as expected in {csv_path}")
+            return False
 
-    plt.title('Transactions Per Second (TPS) by Client Count', fontsize=15)
-    plt.ylabel('TPS', fontsize=12)
-    plt.xlabel('Number of Clients', fontsize=12)
-    plt.grid(True)
-    plt.legend()
-    plt.tight_layout()
-    plt.savefig(f"{OUTPUT_DIR}/concurrent_tps.png", dpi=150)
-    print(f"Saved to {OUTPUT_DIR}/concurrent_tps.png")
+        # Ensure tps and latency_ms are numeric
+        for col in ['tps', 'latency_ms']:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
 
-    # Plot Latency by number of clients
-    plt.figure(figsize=(12, 6))
-    for test in df['test_name'].unique():
-        test_df = df[df['test_name'] == test].sort_values('clients')
-        plt.plot(test_df['clients'], test_df['latency_ms'], marker='o', linewidth=2, label=test)
+        # Plot TPS by number of clients for each test
+        plt.figure(figsize=(12, 6))
+        for test in df['test_name'].unique():
+            test_df = df[df['test_name'] == test].sort_values('clients')
+            if 'tps' in test_df.columns:
+                plt.plot(test_df['clients'], test_df['tps'], marker='o', linewidth=2, label=test)
 
-    plt.title('Average Latency by Client Count', fontsize=15)
-    plt.ylabel('Latency (ms)', fontsize=12)
-    plt.xlabel('Number of Clients', fontsize=12)
-    plt.grid(True)
-    plt.legend()
-    plt.tight_layout()
-    plt.savefig(f"{OUTPUT_DIR}/concurrent_latency.png", dpi=150)
-    print(f"Saved to {OUTPUT_DIR}/concurrent_latency.png")
+        plt.title('Transactions Per Second (TPS) by Client Count', fontsize=15)
+        plt.ylabel('TPS', fontsize=12)
+        plt.xlabel('Number of Clients', fontsize=12)
+        plt.grid(True)
+        plt.legend()
+        plt.tight_layout()
+        plt.savefig(f"{OUTPUT_DIR}/concurrent_tps.png", dpi=150)
+        print(f"Saved to {OUTPUT_DIR}/concurrent_tps.png")
+
+        # Plot Latency by number of clients
+        plt.figure(figsize=(12, 6))
+        for test in df['test_name'].unique():
+            test_df = df[df['test_name'] == test].sort_values('clients')
+            if 'latency_ms' in test_df.columns:
+                plt.plot(test_df['clients'], test_df['latency_ms'], marker='o', linewidth=2, label=test)
+
+        plt.title('Average Latency by Client Count', fontsize=15)
+        plt.ylabel('Latency (ms)', fontsize=12)
+        plt.xlabel('Number of Clients', fontsize=12)
+        plt.grid(True)
+        plt.legend()
+        plt.tight_layout()
+        plt.savefig(f"{OUTPUT_DIR}/concurrent_latency.png", dpi=150)
+        print(f"Saved to {OUTPUT_DIR}/concurrent_latency.png")
+        return True
+    except Exception as e:
+        print(f"Error plotting concurrent results: {e}")
+        return False
 
 def plot_worker_results():
     """Plot comparison between worker nodes"""
     csv_path = f"{RESULTS_DIR}/worker_benchmark_results.csv"
     if not os.path.exists(csv_path):
         print(f"File not found: {csv_path}")
-        return
+        return False
 
-    print(f"Visualizing worker benchmark results from {csv_path}")
-    df = pd.read_csv(csv_path)
+    try:
+        print(f"Visualizing worker benchmark results from {csv_path}")
+        df = pd.read_csv(csv_path)
 
-    # Convert time strings to seconds
-    df['real_seconds'] = df['real_time'].apply(time_to_seconds)
+        if df.empty or 'node' not in df.columns:
+            print(f"Warning: CSV format not as expected in {csv_path}")
+            return False
 
-    # Plot real execution time by node for each query
-    plt.figure(figsize=(12, 8))
-    queries = df['query'].unique()
-    nodes = df['node'].unique()
+        # Check if real_time column exists or we need to create it
+        if 'real_time' in df.columns:
+            # Convert time strings to seconds
+            df['real_seconds'] = df['real_time'].apply(time_to_seconds)
+        elif 'real_seconds' not in df.columns:
+            print(f"Warning: No timing information found in {csv_path}")
+            return False
 
-    x = np.arange(len(queries))  # the label locations
-    width = 0.2  # the width of the bars
-    multiplier = 0
-
-    fig, ax = plt.subplots(figsize=(15, 8))
-
-    for node in nodes:
-        offset = width * multiplier
-        node_data = []
-
-        for query in queries:
-            query_data = df[(df['query'] == query) & (df['node'] == node)]
-            if not query_data.empty:
-                node_data.append(query_data['real_seconds'].values[0])
+        # Make sure query column exists
+        query_col = 'query'
+        if query_col not in df.columns:
+            # Try to find an alternative column
+            possible_query_cols = ['operation', 'test', 'benchmark']
+            for col in possible_query_cols:
+                if col in df.columns:
+                    query_col = col
+                    break
             else:
-                node_data.append(0)
+                print(f"Warning: Could not find query/operation column in {csv_path}")
+                return False
 
-        rects = ax.bar(x + offset, node_data, width, label=node)
-        ax.bar_label(rects, padding=3, fmt='%.2f')
-        multiplier += 1
+        # Plot real execution time by node for each query
+        queries = df[query_col].unique()
+        nodes = df['node'].unique()
 
-    ax.set_title('Query Execution Time by Node', fontsize=15)
-    ax.set_ylabel('Execution Time (seconds)', fontsize=12)
-    ax.set_xticks(x + width, queries)
-    ax.legend(loc='upper left', bbox_to_anchor=(1, 1))
-    plt.xticks(rotation=45, ha='right')
-    plt.tight_layout()
+        x = np.arange(len(queries))  # the label locations
+        width = 0.8 / len(nodes)  # the width of the bars
+        multiplier = 0
 
-    plt.savefig(f"{OUTPUT_DIR}/worker_comparison.png", dpi=150)
-    print(f"Saved to {OUTPUT_DIR}/worker_comparison.png")
+        fig, ax = plt.subplots(figsize=(15, 8))
+
+        for node in nodes:
+            offset = width * (multiplier - len(nodes)/2 + 0.5)
+            node_data = []
+
+            for query in queries:
+                query_data = df[(df[query_col] == query) & (df['node'] == node)]
+                if not query_data.empty and 'real_seconds' in query_data.columns:
+                    node_data.append(query_data['real_seconds'].values[0])
+                else:
+                    node_data.append(0)
+
+            rects = ax.bar(x + offset, node_data, width, label=node)
+            ax.bar_label(rects, padding=3, fmt='%.2f')
+            multiplier += 1
+
+        ax.set_title('Query Execution Time by Node', fontsize=15)
+        ax.set_ylabel('Execution Time (seconds)', fontsize=12)
+        ax.set_xticks(x)
+        ax.set_xticklabels(queries, rotation=45, ha='right')
+        ax.legend(loc='upper left', bbox_to_anchor=(1, 1))
+        plt.tight_layout()
+
+        plt.savefig(f"{OUTPUT_DIR}/worker_comparison.png", dpi=150)
+        print(f"Saved to {OUTPUT_DIR}/worker_comparison.png")
+        return True
+    except Exception as e:
+        print(f"Error plotting worker results: {e}")
+        return False
 
 def plot_ha_results():
     """Plot high availability benchmark results if available"""
     csv_path = f"{RESULTS_DIR}/ha_benchmark_results.csv"
     if not os.path.exists(csv_path):
         print(f"File not found: {csv_path}")
-        return
+        return False
 
-    print(f"Visualizing high availability benchmark results from {csv_path}")
-    df = pd.read_csv(csv_path)
+    try:
+        print(f"Visualizing high availability benchmark results from {csv_path}")
+        df = pd.read_csv(csv_path)
 
-    # Plot error rates during different failure scenarios
-    plt.figure(figsize=(10, 6))
+        if df.empty or 'scenario' not in df.columns:
+            print(f"Warning: CSV format not as expected in {csv_path}")
+            return False
 
-    # Assuming the CSV has columns: scenario, total_queries, error_count, success_rate
-    scenarios = df['scenario'].values
-    success_rates = df['success_rate'].values
-    error_rates = 100 - df['success_rate']
+        # Ensure success_rate is numeric
+        if 'success_rate' in df.columns:
+            df['success_rate'] = pd.to_numeric(df['success_rate'], errors='coerce')
+        else:
+            # If success_rate is not available, try to calculate it
+            if 'total_queries' in df.columns and 'error_count' in df.columns:
+                df['success_rate'] = 100 * (1 - df['error_count'] / df['total_queries'])
+            else:
+                print(f"Warning: Cannot determine success rate from {csv_path}")
+                return False
 
-    # Create bar chart
-    x = np.arange(len(scenarios))
-    width = 0.35
+        # Plot error rates during different failure scenarios
+        plt.figure(figsize=(12, 7))
 
-    fig, ax = plt.subplots(figsize=(12, 7))
-    rects1 = ax.bar(x, success_rates, width, label='Success Rate (%)', color='green')
-    rects2 = ax.bar(x + width, error_rates, width, label='Error Rate (%)', color='red')
+        scenarios = df['scenario'].values
+        success_rates = df['success_rate'].values
+        error_rates = 100 - df['success_rate']
 
-    ax.set_title('Query Success/Error Rate During Failure Scenarios', fontsize=15)
-    ax.set_ylabel('Percentage (%)', fontsize=12)
-    ax.set_xticks(x + width / 2)
-    ax.set_xticklabels(scenarios)
-    plt.xticks(rotation=45, ha='right')
-    ax.legend()
+        # Create bar chart
+        x = np.arange(len(scenarios))
+        width = 0.35
 
-    # Add value labels
-    for rect in rects1:
-        height = rect.get_height()
-        ax.annotate(f'{height:.1f}%',
-                    xy=(rect.get_x() + rect.get_width() / 2, height),
-                    xytext=(0, 3),
-                    textcoords="offset points",
-                    ha='center', va='bottom')
+        fig, ax = plt.subplots(figsize=(12, 7))
+        rects1 = ax.bar(x - width/2, success_rates, width, label='Success Rate (%)', color='green')
+        rects2 = ax.bar(x + width/2, error_rates, width, label='Error Rate (%)', color='red')
 
-    for rect in rects2:
-        height = rect.get_height()
-        ax.annotate(f'{height:.1f}%',
-                    xy=(rect.get_x() + rect.get_width() / 2, height),
-                    xytext=(0, 3),
-                    textcoords="offset points",
-                    ha='center', va='bottom')
+        ax.set_title('Query Success/Error Rate During Failure Scenarios', fontsize=15)
+        ax.set_ylabel('Percentage (%)', fontsize=12)
+        ax.set_xticks(x)
+        ax.set_xticklabels(scenarios, rotation=45, ha='right')
+        ax.legend()
 
-    plt.tight_layout()
-    plt.savefig(f"{OUTPUT_DIR}/ha_success_rates.png", dpi=150)
-    print(f"Saved to {OUTPUT_DIR}/ha_success_rates.png")
+        # Add value labels
+        for rect in rects1:
+            height = rect.get_height()
+            ax.annotate(f'{height:.1f}%',
+                        xy=(rect.get_x() + rect.get_width() / 2, height),
+                        xytext=(0, 3),
+                        textcoords="offset points",
+                        ha='center', va='bottom')
+
+        for rect in rects2:
+            height = rect.get_height()
+            ax.annotate(f'{height:.1f}%',
+                        xy=(rect.get_x() + rect.get_width() / 2, height),
+                        xytext=(0, 3),
+                        textcoords="offset points",
+                        ha='center', va='bottom')
+
+        plt.tight_layout()
+        plt.savefig(f"{OUTPUT_DIR}/ha_success_rates.png", dpi=150)
+        print(f"Saved to {OUTPUT_DIR}/ha_success_rates.png")
+        return True
+    except Exception as e:
+        print(f"Error plotting HA results: {e}")
+        return False
 
 def plot_latency_results():
     """Plot read/write latency benchmark results"""
     csv_path = f"{RESULTS_DIR}/latency_benchmark_results.csv"
     if not os.path.exists(csv_path):
         print(f"File not found: {csv_path}")
-        return
+        return False
 
-    print(f"Visualizing read/write latency benchmark results from {csv_path}")
-    df = pd.read_csv(csv_path)
+    try:
+        print(f"Visualizing read/write latency benchmark results from {csv_path}")
+        df = pd.read_csv(csv_path)
 
-    # Separate read and write operations
-    read_df = df[df['operation_type'] == 'read']
-    write_df = df[df['operation_type'] == 'write']
+        if df.empty or 'operation_type' not in df.columns:
+            print(f"Warning: CSV format not as expected in {csv_path}")
+            return False
 
-    # Plot read operations by batch size
-    plt.figure(figsize=(12, 7))
-    operations = read_df['operation'].unique()
+        # Ensure latency_ms and throughput_per_sec are numeric
+        for col in ['latency_ms', 'throughput_per_sec']:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
 
-    # Create a grouped bar chart for read latencies
-    batch_sizes = sorted(read_df['batch_size'].unique())
-    x = np.arange(len(operations))
-    width = 0.8 / len(batch_sizes)
+        # Separate read and write operations
+        read_df = df[df['operation_type'] == 'read']
+        write_df = df[df['operation_type'] == 'write']
 
-    for i, size in enumerate(batch_sizes):
-        latencies = []
-        for op in operations:
-            op_data = read_df[(read_df['operation'] == op) & (read_df['batch_size'] == size)]
-            if len(op_data) > 0:
-                latencies.append(op_data['latency_ms'].values[0])
-            else:
-                latencies.append(0)
+        if not read_df.empty:
+            # Plot read operations by batch size
+            plt.figure(figsize=(12, 7))
+            operations = read_df['operation'].unique()
 
-        offset = width * (i - len(batch_sizes)/2 + 0.5)
-        plt.bar(x + offset, latencies, width, label=f'Size: {size}')
+            # Check if we have batch_size column
+            if 'batch_size' in read_df.columns:
+                # Create a grouped bar chart for read latencies
+                batch_sizes = sorted(read_df['batch_size'].unique())
+                x = np.arange(len(operations))
+                width = 0.8 / len(batch_sizes)
 
-    plt.title('Read Operation Latency by Type and Size', fontsize=15)
-    plt.ylabel('Latency (ms)', fontsize=12)
-    plt.xticks(x, operations, rotation=45, ha='right')
-    plt.legend()
-    plt.tight_layout()
-    plt.savefig(f"{OUTPUT_DIR}/read_latency.png", dpi=150)
-    print(f"Saved to {OUTPUT_DIR}/read_latency.png")
+                for i, size in enumerate(batch_sizes):
+                    latencies = []
+                    for op in operations:
+                        op_data = read_df[(read_df['operation'] == op) & (read_df['batch_size'] == size)]
+                        if len(op_data) > 0 and 'latency_ms' in op_data.columns:
+                            latencies.append(op_data['latency_ms'].values[0])
+                        else:
+                            latencies.append(0)
 
-    # Plot write operations by batch size
-    plt.figure(figsize=(12, 7))
-    operations = write_df['operation'].unique()
+                    offset = width * (i - len(batch_sizes)/2 + 0.5)
+                    plt.bar(x + offset, latencies, width, label=f'Size: {size}')
 
-    # Create a grouped bar chart for write latencies
-    batch_sizes = sorted(write_df['batch_size'].unique())
-    x = np.arange(len(operations))
-    width = 0.8 / len(batch_sizes)
+                plt.title('Read Operation Latency by Type and Size', fontsize=15)
+                plt.ylabel('Latency (ms)', fontsize=12)
+                plt.xticks(x, operations, rotation=45, ha='right')
+                plt.legend()
+                plt.tight_layout()
+                plt.savefig(f"{OUTPUT_DIR}/read_latency.png", dpi=150)
+                print(f"Saved to {OUTPUT_DIR}/read_latency.png")
 
-    for i, size in enumerate(batch_sizes):
-        latencies = []
-        for op in operations:
-            op_data = write_df[(write_df['operation'] == op) & (write_df['batch_size'] == size)]
-            if len(op_data) > 0:
-                latencies.append(op_data['latency_ms'].values[0])
-            else:
-                latencies.append(0)
+        if not write_df.empty:
+            # Plot write operations by batch size
+            plt.figure(figsize=(12, 7))
+            operations = write_df['operation'].unique()
 
-        offset = width * (i - len(batch_sizes)/2 + 0.5)
-        plt.bar(x + offset, latencies, width, label=f'Size: {size}')
+            # Check if we have batch_size column
+            if 'batch_size' in write_df.columns:
+                # Create a grouped bar chart for write latencies
+                batch_sizes = sorted(write_df['batch_size'].unique())
+                x = np.arange(len(operations))
+                width = 0.8 / len(batch_sizes)
 
-    plt.title('Write Operation Latency by Type and Size', fontsize=15)
-    plt.ylabel('Latency (ms)', fontsize=12)
-    plt.xticks(x, operations, rotation=45, ha='right')
-    plt.legend()
-    plt.tight_layout()
-    plt.savefig(f"{OUTPUT_DIR}/write_latency.png", dpi=150)
-    print(f"Saved to {OUTPUT_DIR}/write_latency.png")
+                for i, size in enumerate(batch_sizes):
+                    latencies = []
+                    for op in operations:
+                        op_data = write_df[(write_df['operation'] == op) & (write_df['batch_size'] == size)]
+                        if len(op_data) > 0 and 'latency_ms' in op_data.columns:
+                            latencies.append(op_data['latency_ms'].values[0])
+                        else:
+                            latencies.append(0)
 
-    # Plot throughput comparison
-    plt.figure(figsize=(14, 7))
+                    offset = width * (i - len(batch_sizes)/2 + 0.5)
+                    plt.bar(x + offset, latencies, width, label=f'Size: {size}')
 
-    # Group by operation and batch size
-    op_groups = df.groupby(['operation', 'batch_size', 'operation_type'])['throughput_per_sec'].mean().reset_index()
+                plt.title('Write Operation Latency by Type and Size', fontsize=15)
+                plt.ylabel('Latency (ms)', fontsize=12)
+                plt.xticks(x, operations, rotation=45, ha='right')
+                plt.legend()
+                plt.tight_layout()
+                plt.savefig(f"{OUTPUT_DIR}/write_latency.png", dpi=150)
+                print(f"Saved to {OUTPUT_DIR}/write_latency.png")
 
-    # Sort for better visualization
-    op_groups = op_groups.sort_values(['operation_type', 'operation', 'batch_size'])
+        # Plot throughput comparison if we have that data
+        if 'throughput_per_sec' in df.columns:
+            plt.figure(figsize=(14, 7))
 
-    # Create a categorical plot
-    sns_plot = sns.catplot(
-        data=op_groups,
-        kind="bar",
-        x="operation",
-        y="throughput_per_sec",
-        hue="batch_size",
-        col="operation_type",
-        height=5,
-        aspect=1.2,
-        palette="viridis",
-        legend_out=False
-    )
+            # Group by operation and batch size
+            if 'batch_size' in df.columns:
+                op_groups = df.groupby(['operation', 'batch_size', 'operation_type'])['throughput_per_sec'].mean().reset_index()
 
-    sns_plot.set_xticklabels(rotation=45, ha="right")
-    sns_plot.set_titles("{col_name} Operations")
-    sns_plot.set_axis_labels("Operation", "Throughput (ops/sec)")
-    sns_plot.fig.suptitle('Operation Throughput Comparison', fontsize=16)
-    sns_plot.fig.subplots_adjust(top=0.85)
+                # Sort for better visualization
+                op_groups = op_groups.sort_values(['operation_type', 'operation', 'batch_size'])
 
-    plt.savefig(f"{OUTPUT_DIR}/operation_throughput.png", dpi=150)
-    print(f"Saved to {OUTPUT_DIR}/operation_throughput.png")
+                try:
+                    # Create a categorical plot
+                    sns_plot = sns.catplot(
+                        data=op_groups,
+                        kind="bar",
+                        x="operation",
+                        y="throughput_per_sec",
+                        hue="batch_size",
+                        col="operation_type",
+                        height=5,
+                        aspect=1.2,
+                        palette="viridis",
+                        legend_out=False
+                    )
+
+                    sns_plot.set_xticklabels(rotation=45, ha="right")
+                    sns_plot.set_titles("{col_name} Operations")
+                    sns_plot.set_axis_labels("Operation", "Throughput (ops/sec)")
+                    sns_plot.fig.suptitle('Operation Throughput Comparison', fontsize=16)
+                    sns_plot.fig.subplots_adjust(top=0.85)
+
+                    plt.savefig(f"{OUTPUT_DIR}/operation_throughput.png", dpi=150)
+                    print(f"Saved to {OUTPUT_DIR}/operation_throughput.png")
+                except Exception as e:
+                    print(f"Error creating catplot: {e}")
+
+        return True
+    except Exception as e:
+        print(f"Error plotting latency results: {e}")
+        return False
 
 def create_html_report():
     """Create an HTML report with all generated graphs"""
@@ -333,7 +428,7 @@ def create_html_report():
         "High Availability Success Rates": "ha_success_rates.png",
         "Read Latency": "read_latency.png",
         "Write Latency": "write_latency.png",
-        "Operation Throughput Comparison": "operation_throughput.png"
+        "Operation Throughput": "operation_throughput.png"
     }
 
     for title, filename in graph_files.items():

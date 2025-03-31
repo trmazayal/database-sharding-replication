@@ -178,47 +178,6 @@ else
     echo -e "${GREEN}Found sufficient data for benchmark${NC}"
 fi
 
-# Create temp table for write tests to avoid affecting the main data
-echo -e "\n${YELLOW}Creating temporary table for write tests...${NC}"
-
-# Force drop the write_test table if it exists (in the public schema)
-echo -e "${YELLOW}Dropping write_test table if it exists...${NC}"
-docker_psql -c "DROP TABLE IF EXISTS public.write_test CASCADE;" || true
-
-# Wait briefly to ensure the drop is processed
-sleep 2
-
-# Create the table as public.write_test
-echo -e "${YELLOW}Creating new write_test table...${NC}"
-docker_psql -c "CREATE TABLE public.write_test (
-    id SERIAL,
-    vehicle_id INT NOT NULL,
-    location geometry(Point, 4326) NOT NULL,
-    recorded_at TIMESTAMPTZ NOT NULL,
-    region_code TEXT NOT NULL
-);"
-
-# Verify table was created
-if docker_psql -t -c "SELECT to_regclass('public.write_test');" | grep -q "public.write_test"; then
-    echo -e "${GREEN}Table created successfully${NC}"
-
-    # Small delay to ensure table is fully created in the catalog
-    sleep 2
-
-    # Distribute the table
-    echo -e "${YELLOW}Distributing write_test table...${NC}"
-    if docker_psql -c "SELECT create_distributed_table('public.write_test', 'region_code');" > /dev/null 2>&1; then
-        echo -e "${GREEN}Table distributed successfully${NC}"
-    else
-        echo -e "${YELLOW}Note: Could not distribute table, continuing with local table${NC}"
-    fi
-else
-    echo -e "${RED}Table creation failed, using local table${NC}"
-fi
-
-# Clean any existing data
-docker_psql -c "TRUNCATE write_test;" > /dev/null 2>&1
-
 # ----- READ LATENCY BENCHMARKS -----
 
 echo -e "\n${YELLOW}Running READ latency benchmarks...${NC}"
@@ -275,7 +234,7 @@ echo -e "\n${YELLOW}Running WRITE latency benchmarks...${NC}"
 
 # Single row insert
 measure_latency "Insert" "write" "single" "
-INSERT INTO write_test (vehicle_id, location, recorded_at, region_code)
+INSERT INTO vehicle_locations (vehicle_id, location, recorded_at, region_code)
 VALUES (
     floor(random() * 10000) + 1,
     ST_SetSRID(ST_MakePoint(-74.0 + random() * 0.5, 40.7 + random() * 0.5), 4326),
@@ -287,7 +246,7 @@ VALUES (
 
 # Batch insert - small (10 rows)
 measure_latency "Insert" "write" "small" "
-INSERT INTO write_test (vehicle_id, location, recorded_at, region_code)
+INSERT INTO vehicle_locations (vehicle_id, location, recorded_at, region_code)
 SELECT
     (floor(random() * 10000) + 1)::int AS vehicle_id,
     ST_SetSRID(
@@ -307,7 +266,7 @@ FROM generate_series(1, 10) s(i);"
 
 # Batch insert - medium (100 rows)
 measure_latency "Insert" "write" "medium" "
-INSERT INTO write_test (vehicle_id, location, recorded_at, region_code)
+INSERT INTO vehicle_locations (vehicle_id, location, recorded_at, region_code)
 SELECT
     (floor(random() * 10000) + 1)::int AS vehicle_id,
     ST_SetSRID(
@@ -327,7 +286,7 @@ FROM generate_series(1, 100) s(i);"
 
 # Batch insert - large (1000 rows)
 measure_latency "Insert" "write" "large" "
-INSERT INTO write_test (vehicle_id, location, recorded_at, region_code)
+INSERT INTO vehicle_locations (vehicle_id, location, recorded_at, region_code)
 SELECT
     (floor(random() * 10000) + 1)::int AS vehicle_id,
     ST_SetSRID(
@@ -345,34 +304,6 @@ SELECT
     END AS region_code
 FROM generate_series(1, 1000) s(i);"
 
-# Update operations
-measure_latency "Update" "write" "single" "
-UPDATE write_test
-SET vehicle_id = floor(random() * 10000) + 1
-WHERE id = (SELECT id FROM write_test LIMIT 1);"
-
-measure_latency "Update" "write" "small" "
-UPDATE write_test
-SET vehicle_id = floor(random() * 10000) + 1
-WHERE id IN (SELECT id FROM write_test LIMIT 10);"
-
-measure_latency "Update" "write" "medium" "
-UPDATE write_test
-SET vehicle_id = floor(random() * 10000) + 1
-WHERE id IN (SELECT id FROM write_test LIMIT 100);"
-
-# Delete operations
-measure_latency "Delete" "write" "single" "
-DELETE FROM write_test
-WHERE id = (SELECT id FROM write_test LIMIT 1);"
-
-measure_latency "Delete" "write" "small" "
-DELETE FROM write_test
-WHERE id IN (SELECT id FROM write_test ORDER BY random() LIMIT 10);"
-
-# Clean up
-echo -e "\n${YELLOW}Cleaning up test table...${NC}"
-docker_psql -c "DROP TABLE IF EXISTS write_test;"
 
 echo -e "\n${GREEN}Latency benchmark complete!${NC}"
 echo "Results saved to ${LATENCY_CSV} for visualization"

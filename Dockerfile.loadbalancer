@@ -19,7 +19,7 @@ RUN echo "deb [signed-by=/usr/share/keyrings/postgresql-archive-keyring.gpg] htt
 # Install PostgreSQL client packages explicitly
 RUN apt-get update && apt-get install -y \
     postgresql-client-15 \
-    postgresql-15-contrib \
+    postgresql-contrib-15 \
     && rm -rf /var/lib/apt/lists/*
 
 # Create a symbolic link for pgbench if not already present
