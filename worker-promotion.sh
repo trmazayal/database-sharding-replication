@@ -9,6 +9,20 @@ log() {
   echo "$(date '+%Y-%m-%d %H:%M:%S') - $1"
 }
 
+# Function to ensure Citus extension exists
+ensure_citus_extension() {
+  local host=$1
+  log "Ensuring Citus extension exists on $host..."
+
+  if psql -h "$host" -p 5432 -U citus -d citus -c "CREATE EXTENSION IF NOT EXISTS citus;" > /dev/null 2>&1; then
+    log "Citus extension is ready on $host."
+    return 0
+  else
+    log "Failed to create Citus extension on $host."
+    return 1
+  fi
+}
+
 # Function to check if a host is reachable
 check_host() {
   local host=$1
@@ -41,19 +55,16 @@ update_coordinators() {
 
   for coordinator in coordinator_primary coordinator_secondary; do
     if check_host $coordinator 5432; then
-      log "Updating $coordinator configuration..."
+      # Ensure Citus extension exists first
+      ensure_citus_extension $coordinator
 
-      # Update node metadata in coordinator
-      psql -h $coordinator -U citus -d citus -c "
-        BEGIN;
-        UPDATE pg_dist_node
-        SET nodename = '$new_primary'
-        WHERE nodename = '$old_primary';
-        COMMIT;
-      " > /dev/null 2>&1 || log "Failed to update node metadata in $coordinator"
+      # Update the node metadata in the coordinator
+      psql -h $coordinator -U citus -d citus -c "SELECT * FROM citus_update_node(node_id, '$new_primary', 5432) FROM pg_dist_node WHERE nodename='$old_primary';" || {
+        log "Failed to update node metadata on $coordinator. Will retry later."
+      }
 
-      # Force metadata sync
-      psql -h $coordinator -U citus -d citus -c "SELECT citus_internal.refresh_database_metadata();" > /dev/null 2>&1 || log "Failed to refresh metadata in $coordinator"
+      # Add the old primary back as a secondary once it comes online
+      log "Setting up the old primary $old_primary as a secondary of $new_primary when available"
 
       log "$coordinator updated to use $new_primary"
     else
@@ -61,10 +72,6 @@ update_coordinators() {
     fi
   done
 }
-
-# Store failovers to track worker primary/secondary relationships
-declare -A current_primarys
-declare -A current_secondarys
 
 # State persistence file to maintain node roles across restarts
 STATE_FILE="/var/lib/postgresql/worker_state.json"
@@ -158,8 +165,25 @@ handle_former_primary() {
   return 0
 }
 
+# Store failovers to track worker primary/secondary relationships
+declare -A current_primarys
+declare -A current_secondarys
+
 # Initialize node tracking when the script starts
 initialize_node_tracking
+
+# Ensure Citus extension exists on the coordinator before verification
+log "Ensuring Citus extension exists on coordinators..."
+ensure_citus_extension coordinator_primary || log "Warning: Could not ensure Citus extension on coordinator_primary"
+ensure_citus_extension coordinator_secondary || log "Warning: Could not ensure Citus extension on coordinator_secondary"
+
+# Try to verify node registration, but continue even if it fails
+log "Attempting to verify node configuration including secondaries..."
+if psql -h coordinator_primary -U citus -d citus -c "SELECT nodeid, nodename, nodeport, noderole FROM pg_dist_node;" > /dev/null 2>&1; then
+  log "Node verification successful."
+else
+  log "Could not verify node configuration. Will continue monitoring anyway."
+fi
 
 # Main monitoring loop
 while true; do

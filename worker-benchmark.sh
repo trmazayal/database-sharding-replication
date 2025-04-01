@@ -125,6 +125,56 @@ WHERE ST_Within(
     ST_MakeEnvelope(-74.0, 40.7, -73.9, 40.8, 4326)
 );" "Bounding box query" || true
 
+# Additional benchmark queries for comprehensive testing
+# Complex aggregation query
+compare_hosts "SELECT region_code, vehicle_type, COUNT(*), AVG(ST_X(location)), AVG(ST_Y(location))
+FROM vehicle_locations
+GROUP BY region_code, vehicle_type
+ORDER BY region_code, vehicle_type;" "Complex aggregation by region and vehicle type" || true
+
+# Window function query
+compare_hosts "SELECT id, region_code, vehicle_type,
+       ROW_NUMBER() OVER (PARTITION BY region_code ORDER BY updated_at DESC) as recency_rank
+FROM vehicle_locations
+WHERE updated_at > NOW() - INTERVAL '1 hour'
+LIMIT 1000;" "Window function for recency ranking" || true
+
+# Join query (assuming we have a vehicle_types table; if not, this will fail gracefully)
+compare_hosts "SELECT vl.region_code, COUNT(*)
+FROM vehicle_locations vl
+JOIN pg_catalog.pg_tables t ON TRUE
+GROUP BY vl.region_code
+ORDER BY COUNT(*) DESC
+LIMIT 10;" "Join query with aggregation" || true
+
+# More complex spatial query
+compare_hosts "SELECT region_code,
+       COUNT(*),
+       ST_Extent(location) as bounding_box
+FROM vehicle_locations
+GROUP BY region_code;" "Spatial aggregation with bounding box" || true
+
+# Query with subquery
+compare_hosts "SELECT COUNT(*) FROM vehicle_locations
+WHERE region_code IN (
+    SELECT region_code
+    FROM vehicle_locations
+    GROUP BY region_code
+    HAVING COUNT(*) > 1000
+);" "Query with subquery" || true
+
+# Compute-intensive spatial query
+compare_hosts "SELECT COUNT(*)
+FROM vehicle_locations v1
+WHERE EXISTS (
+    SELECT 1
+    FROM vehicle_locations v2
+    WHERE v1.id <> v2.id
+    AND ST_DWithin(v1.location::geography, v2.location::geography, 100)
+    LIMIT 1
+)
+LIMIT 5000;" "Proximity detection query (limited)" || true
+
 echo -e "\n${GREEN}Worker benchmark complete!${NC}"
 echo "Results saved to ${WORKER_CSV} for visualization"
 echo "================================================"

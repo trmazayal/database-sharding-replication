@@ -85,12 +85,52 @@ for coordinator in coordinator_primary coordinator_secondary; do
   psql -h $coordinator -U citus -d citus -c "SELECT * FROM citus_add_node('worker3_primary', 5432);"
 done
 
+echo "Adding primary and secondary workers to the cluster..."
+for coordinator in coordinator_primary coordinator_secondary; do
+  echo "Configuring nodes on $coordinator..."
+
+  # Add primary workers as regular nodes
+  psql -h $coordinator -U citus -d citus -c "SELECT * FROM citus_add_node('worker1_primary', 5432);"
+  psql -h $coordinator -U citus -d citus -c "SELECT * FROM citus_add_node('worker2_primary', 5432);"
+  psql -h $coordinator -U citus -d citus -c "SELECT * FROM citus_add_node('worker3_primary', 5432);"
+
+  # Add secondary workers as secondary nodes
+  psql -h $coordinator -U citus -d citus -c "SELECT * FROM citus_add_secondary_node('worker1_secondary', 5432, 'worker1_primary', 5432);"
+  psql -h $coordinator -U citus -d citus -c "SELECT * FROM citus_add_secondary_node('worker2_secondary', 5432, 'worker2_primary', 5432);"
+  psql -h $coordinator -U citus -d citus -c "SELECT * FROM citus_add_secondary_node('worker3_secondary', 5432, 'worker3_primary', 5432);"
+
+  # Replace the ALTER SYSTEM statement with:
+  psql -h $coordinator -U citus -d citus -c "ALTER SYSTEM SET citus.use_secondary_nodes = 'never';"
+  psql -h $coordinator -U citus -d citus -c "SELECT pg_reload_conf();"
+done
+
+echo "Creating read balancing function..."
+for coordinator in coordinator_primary coordinator_secondary; do
+  psql -h $coordinator -U citus -d citus << EOF
+-- Create helper function for read operations
+CREATE OR REPLACE FUNCTION use_secondary_if_available() RETURNS void AS \$\$
+BEGIN
+  IF current_setting('citus.use_secondary_nodes') = 'never' THEN
+    SET LOCAL citus.use_secondary_nodes TO 'always';
+  END IF;
+END;
+\$\$ LANGUAGE plpgsql;
+
+-- Example of usage
+COMMENT ON FUNCTION use_secondary_if_available() IS
+  'Call this function at the start of read-heavy transactions to use secondary nodes';
+EOF
+done
+
 # Verify replication setup
 echo "Verifying replication setup on primary coordinator..."
 psql -h coordinator_primary -U citus -d citus -c "SELECT nodename, nodeport, noderack FROM pg_dist_node;"
 
 echo "Verifying replication setup on secondary coordinator..."
 psql -h coordinator_secondary -U citus -d citus -c "SELECT nodename, nodeport, noderack FROM pg_dist_node;"
+
+echo "Verifying node configuration including secondaries..."
+psql -h coordinator_primary -U citus -d citus -c "SELECT nodeid, nodename, nodeport, noderole FROM pg_dist_node;"
 
 echo "Primary-Secondary Citus cluster setup complete."
 echo "Worker secondarys are configured as hot standby nodes for their respective primarys."

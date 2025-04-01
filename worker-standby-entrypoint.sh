@@ -8,6 +8,25 @@ rm -rf /var/lib/postgresql/data/*
 echo "Installing diagnostic tools..."
 apt-get update -qq && apt-get install -y -qq netcat-openbsd iputils-ping 2>/dev/null || true
 
+#############################################################
+# MASTER-SLAVE ARCHITECTURE WITH STREAMING REPLICATION
+#
+# In this architecture:
+# 1. PRIMARY (MASTER) - Accepts all write operations
+#    - Generates Write-Ahead Log (WAL) records
+#    - Serves as the authoritative copy of the database
+#
+# 2. SECONDARY (SLAVE) - Streaming replica of PRIMARY
+#    - Continuously receives and applies WAL records
+#    - Can serve read-only queries to distribute load
+#    - Provides high availability with failover capability
+#
+# Streaming replication works by:
+#   - The PRIMARY server streams WAL records to SECONDARY
+#   - SECONDARY applies these records to maintain synchronization
+#   - Recovery parameters in postgresql.conf control the process
+#############################################################
+
 # Get primary host from environment variable or use default
 PRIMARY_HOST=${PRIMARY_HOST:-worker1_primary}
 echo "🔄 Using primary host: ${PRIMARY_HOST}"
@@ -39,6 +58,8 @@ fi
 
 # Try pg_basebackup with retries and verbose output
 echo "🔄 Attempting to clone primary data using pg_basebackup..."
+# pg_basebackup is the PostgreSQL utility that performs the initial snapshot
+# of the PRIMARY database to initialize the SECONDARY replica
 MAX_BASEBACKUP_RETRIES=5  # increase retries
 BASEBACKUP_RETRY=0
 BASEBACKUP_SUCCESS=false
@@ -50,6 +71,10 @@ PGPASSWORD=citus psql -h ${PRIMARY_HOST} -U postgres -d postgres -c "\du" || ech
 while [ $BASEBACKUP_RETRY -lt $MAX_BASEBACKUP_RETRIES ] && [ "$BASEBACKUP_SUCCESS" = "false" ]; do
     echo "pg_basebackup attempt $((BASEBACKUP_RETRY+1))/$MAX_BASEBACKUP_RETRIES..."
     if PGPASSWORD=citus gosu postgres pg_basebackup -h ${PRIMARY_HOST} -D /var/lib/postgresql/data -U citus -R -P -X stream -v; then
+        # -X stream: Use streaming replication mode to avoid WAL archiving
+        # -R: Generate recovery configuration automatically
+        # -P: Show progress information
+        # -v: Verbose mode
         BASEBACKUP_SUCCESS=true
         echo "✅ pg_basebackup completed successfully!"
     else
@@ -77,6 +102,7 @@ if [ "$BASEBACKUP_SUCCESS" = "false" ]; then
 fi
 
 # Create standby.signal file if it doesn't exist yet
+# This file indicates to PostgreSQL that this is a secondary (standby) server
 if [ ! -f "/var/lib/postgresql/data/standby.signal" ]; then
     echo "📝 Creating standby.signal file..."
     touch /var/lib/postgresql/data/standby.signal
@@ -88,11 +114,17 @@ echo "📝 Configuring PostgreSQL Standby settings..."
 PG_VERSION=$(gosu postgres postgres --version | grep -oE '[0-9]+\.[0-9]+' | head -1)
 echo "Detected PostgreSQL version: $PG_VERSION"
 
+# Update postgresql.conf with streaming replication parameters
 cat >> /var/lib/postgresql/data/postgresql.conf << EOF
-# Standby settings
-primary_conninfo = 'host=${PRIMARY_HOST} port=5432 user=citus password=citus'
-hot_standby = on
-max_standby_streaming_delay = 30s
+# Standby settings for streaming replication
+primary_conninfo = 'host=${PRIMARY_HOST} port=5432 user=citus password=citus application_name=$(hostname)'
+hot_standby = on                 # Allows read-only queries during recovery
+max_standby_streaming_delay = 30s # Max delay before canceling queries if primary is receiving traffic
+hot_standby_feedback = on        # Send info to PRIMARY about standby queries to prevent WAL removal
+
+# Replication performance settings
+wal_receiver_status_interval = 10s # Seconds between status packets sent to PRIMARY
+wal_receiver_timeout = 60s      # Seconds to wait for WAL from primary
 EOF
 
 # In PostgreSQL 17+, recovery parameters are different
@@ -127,4 +159,7 @@ chown -R postgres:postgres /var/lib/postgresql/data
 chmod 0700 /var/lib/postgresql/data
 
 echo "✅ Starting PostgreSQL in standby mode with promotion capability..."
+echo "    - Streaming replication has been configured"
+echo "    - This instance will receive WAL records from ${PRIMARY_HOST}"
+echo "    - Use worker-promotion.sh to promote this standby to primary if needed"
 exec gosu postgres postgres
