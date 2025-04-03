@@ -138,7 +138,7 @@ fi
 echo -e "${GREEN}Starting Python simulation with pattern: $PATTERN${NC}"
 echo -e "${YELLOW}Press Ctrl+C to stop or wait $DURATION seconds for automatic termination${NC}"
 
-python3 "$(dirname "$0")/read_trend_simulator.py" "${PYTHON_ARGS[@]}"
+# python3 "$(dirname "$0")/python read_trend_simulator.py --warmup 30 --runs 3 --seed 42 --duration 60 --nice 10"
 
 # Check if Python script succeeded
 if [ $? -ne 0 ]; then
