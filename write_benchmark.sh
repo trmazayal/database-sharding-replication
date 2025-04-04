@@ -22,3 +22,6 @@ cp benchmark_results/locust_write-only.log $RESULTS_DIR/
 cp benchmark_results/locust_metrics_*.json $RESULTS_DIR/
 
 echo "Benchmark complete! Results saved to $RESULTS_DIR"
+echo "Summary of throughput and latency metrics:"
+echo "----------------------------------------"
+cat $RESULTS_DIR/locust_metrics_*.json | grep -E '"throughput_ops_sec"|"write_latency_ms"|"success_rate"'

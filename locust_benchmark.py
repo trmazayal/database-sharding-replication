@@ -44,7 +44,11 @@ custom_metrics = {
     "spatial_latencies": [],
     "errors": [],
     "success_count": 0,
-    "error_count": 0
+    "error_count": 0,
+    "start_time": None,
+    "read_count": 0,
+    "write_count": 0,
+    "spatial_count": 0
 }
 
 # Initialize PostgreSQL connection pool
@@ -172,6 +176,9 @@ def on_test_start(environment, **kwargs):
         else:
             print("Failed to setup table. Tests may fail.")
 
+        # Record test start time for throughput calculation
+        custom_metrics["start_time"] = time.time()
+
     except Exception as e:
         print(f"Failed to initialize connection pool: {e}")
         environment.process_exit()
@@ -183,6 +190,27 @@ def on_test_stop(environment, **kwargs):
     if conn_pool:
         conn_pool.closeall()
         print("Connection pool closed")
+
+    # Calculate test duration for throughput
+    end_time = time.time()
+    if custom_metrics["start_time"] is not None:
+        test_duration = end_time - custom_metrics["start_time"]
+
+        # Calculate throughput metrics (operations per second)
+        total_ops = custom_metrics["read_count"] + custom_metrics["write_count"] + custom_metrics["spatial_count"]
+        total_throughput = total_ops / test_duration if test_duration > 0 else 0
+        read_throughput = custom_metrics["read_count"] / test_duration if test_duration > 0 else 0
+        write_throughput = custom_metrics["write_count"] / test_duration if test_duration > 0 else 0
+        spatial_throughput = custom_metrics["spatial_count"] / test_duration if test_duration > 0 else 0
+
+        print(f"Overall throughput: {total_throughput:.2f} ops/sec ({total_ops} operations in {test_duration:.2f} seconds)")
+        print(f"Read throughput: {read_throughput:.2f} ops/sec ({custom_metrics['read_count']} operations)")
+        print(f"Write throughput: {write_throughput:.2f} ops/sec ({custom_metrics['write_count']} operations)")
+        print(f"Spatial throughput: {spatial_throughput:.2f} ops/sec ({custom_metrics['spatial_count']} operations)")
+    else:
+        print("Warning: Test start time was not recorded. Cannot calculate throughput.")
+        total_throughput = read_throughput = write_throughput = spatial_throughput = 0
+        test_duration = 0
 
     # Generate summary statistics
     if custom_metrics["read_latencies"]:
@@ -231,6 +259,19 @@ def on_test_stop(environment, **kwargs):
                 "max": max(custom_metrics["spatial_latencies"]) if custom_metrics["spatial_latencies"] else 0,
                 "p95": statistics.quantiles(custom_metrics["spatial_latencies"], n=20)[18] if len(custom_metrics["spatial_latencies"]) > 19 else 0
             },
+            "throughput_ops_sec": {
+                "total": total_throughput,
+                "read": read_throughput,
+                "write": write_throughput,
+                "spatial": spatial_throughput,
+                "test_duration_sec": test_duration
+            },
+            "operations": {
+                "total": total_ops,
+                "read": custom_metrics["read_count"],
+                "write": custom_metrics["write_count"],
+                "spatial": custom_metrics["spatial_count"]
+            },
             "success_count": custom_metrics["success_count"],
             "error_count": custom_metrics["error_count"],
             "success_rate": success_rate,
@@ -270,10 +311,13 @@ def execute_query(query, params=None, query_type="read"):
         # Store latency in custom metrics
         if query_type == "read":
             custom_metrics["read_latencies"].append(latency_ms)
+            custom_metrics["read_count"] += 1
         elif query_type == "write":
             custom_metrics["write_latencies"].append(latency_ms)
+            custom_metrics["write_count"] += 1
         elif query_type == "spatial":
             custom_metrics["spatial_latencies"].append(latency_ms)
+            custom_metrics["spatial_count"] += 1
 
         custom_metrics["success_count"] += 1
 
