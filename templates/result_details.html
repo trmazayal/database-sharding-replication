@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Benchmark Result Details</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="container mt-4">
+        <h1>Benchmark Result Details</h1>
+        <p><a href="/results" class="btn btn-sm btn-outline-primary"><i class="bi bi-arrow-left"></i> Back to Results</a></p>
+
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5>Overview</h5>
+                    </div>
+                    <div class="card-body">
+                        <p><strong>Filename:</strong> {{ filename }}</p>
+                        <p><strong>Timestamp:</strong> {{ data.timestamp }}</p>
+                        <p><strong>Test Duration:</strong> {{ data.throughput_ops_sec.test_duration_sec }} seconds</p>
+                        <p><strong>Success Rate:</strong> {{ "%.2f"|format(data.success_rate) }}%</p>
+                        <p><strong>Total Operations:</strong> {{ data.operations.total }}</p>
+                    </div>
+                </div>
+
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5>Operations</h5>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="operationsChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-6">
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5>Throughput</h5>
+                    </div>
+                    <div class="card-body">
+                        <p><strong>Total Throughput:</strong> {{ "%.2f"|format(data.throughput_ops_sec.total) }} ops/sec</p>
+                        <p><strong>Read Throughput:</strong> {{ "%.2f"|format(data.throughput_ops_sec.read) }} ops/sec</p>
+                        <p><strong>Write Throughput:</strong> {{ "%.2f"|format(data.throughput_ops_sec.write) }} ops/sec</p>
+                        <p><strong>Spatial Throughput:</strong> {{ "%.2f"|format(data.throughput_ops_sec.spatial) }} ops/sec</p>
+                        <canvas id="throughputChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5>Latency (ms)</h5>
+                    </div>
+                    <div class="card-body">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Operation</th>
+                                    <th>Avg</th>
+                                    <th>Min</th>
+                                    <th>Max</th>
+                                    <th>P95</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>Read</td>
+                                    <td>{{ "%.2f"|format(data.read_latency_ms.avg) }}</td>
+                                    <td>{{ "%.2f"|format(data.read_latency_ms.min) }}</td>
+                                    <td>{{ "%.2f"|format(data.read_latency_ms.max) }}</td>
+                                    <td>{{ "%.2f"|format(data.read_latency_ms.p95) }}</td>
+                                </tr>
+                                <tr>
+                                    <td>Write</td>
+                                    <td>{{ "%.2f"|format(data.write_latency_ms.avg) }}</td>
+                                    <td>{{ "%.2f"|format(data.write_latency_ms.min) }}</td>
+                                    <td>{{ "%.2f"|format(data.write_latency_ms.max) }}</td>
+                                    <td>{{ "%.2f"|format(data.write_latency_ms.p95) }}</td>
+                                </tr>
+                                <tr>
+                                    <td>Spatial</td>
+                                    <td>{{ "%.2f"|format(data.spatial_latency_ms.avg) }}</td>
+                                    <td>{{ "%.2f"|format(data.spatial_latency_ms.min) }}</td>
+                                    <td>{{ "%.2f"|format(data.spatial_latency_ms.max) }}</td>
+                                    <td>{{ "%.2f"|format(data.spatial_latency_ms.p95) }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        <canvas id="latencyChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5>Raw Data</h5>
+            </div>
+            <div class="card-body">
+                <pre class="bg-light p-3 rounded"><code>{{ data|tojson(indent=2) }}</code></pre>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Operations Chart
+            const operationsData = {
+                labels: ['Read', 'Write', 'Spatial'],
+                datasets: [{
+                    label: 'Operations',
+                    data: [
+                        {{ data.operations.read }},
+                        {{ data.operations.write }},
+                        {{ data.operations.spatial }}
+                    ],
+                    backgroundColor: [
+                        'rgba(54, 162, 235, 0.7)',
+                        'rgba(255, 99, 132, 0.7)',
+                        'rgba(255, 206, 86, 0.7)'
+                    ],
+                    borderColor: [
+                        'rgba(54, 162, 235, 1)',
+                        'rgba(255, 99, 132, 1)',
+                        'rgba(255, 206, 86, 1)'
+                    ],
+                    borderWidth: 1
+                }]
+            };
+
+            const operationsCtx = document.getElementById('operationsChart').getContext('2d');
+            new Chart(operationsCtx, {
+                type: 'pie',
+                data: operationsData,
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        },
+                        title: {
+                            display: true,
+                            text: 'Operation Distribution'
+                        }
+                    }
+                }
+            });
+
+            // Throughput Chart
+            const throughputData = {
+                labels: ['Read', 'Write', 'Spatial'],
+                datasets: [{
+                    label: 'Operations per Second',
+                    data: [
+                        {{ data.throughput_ops_sec.read }},
+                        {{ data.throughput_ops_sec.write }},
+                        {{ data.throughput_ops_sec.spatial }}
+                    ],
+                    backgroundColor: 'rgba(75, 192, 192, 0.7)',
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    borderWidth: 1
+                }]
+            };
+
+            const throughputCtx = document.getElementById('throughputChart').getContext('2d');
+            new Chart(throughputCtx, {
+                type: 'bar',
+                data: throughputData,
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Operations per Second'
+                            }
+                        }
+                    },
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Throughput by Operation Type'
+                        }
+                    }
+                }
+            });
+
+            // Latency Chart
+            const latencyData = {
+                labels: ['Average', 'P95'],
+                datasets: [
+                    {
+                        label: 'Read',
+                        data: [
+                            {{ data.read_latency_ms.avg }},
+                            {{ data.read_latency_ms.p95 }}
+                        ],
+                        backgroundColor: 'rgba(54, 162, 235, 0.7)',
+                        borderColor: 'rgba(54, 162, 235, 1)',
+                        borderWidth: 1
+                    },
+                    {
+                        label: 'Write',
+                        data: [
+                            {{ data.write_latency_ms.avg }},
+                            {{ data.write_latency_ms.p95 }}
+                        ],
+                        backgroundColor: 'rgba(255, 99, 132, 0.7)',
+                        borderColor: 'rgba(255, 99, 132, 1)',
+                        borderWidth: 1
+                    },
+                    {
+                        label: 'Spatial',
+                        data: [
+                            {{ data.spatial_latency_ms.avg }},
+                            {{ data.spatial_latency_ms.p95 }}
+                        ],
+                        backgroundColor: 'rgba(255, 206, 86, 0.7)',
+                        borderColor: 'rgba(255, 206, 86, 1)',
+                        borderWidth: 1
+                    }
+                ]
+            };
+
+            const latencyCtx = document.getElementById('latencyChart').getContext('2d');
+            new Chart(latencyCtx, {
+                type: 'bar',
+                data: latencyData,
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Milliseconds'
+                            }
+                        }
+                    },
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Latency by Operation Type'
+                        }
+                    }
+                }
+            });
+        });
+    </script>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
