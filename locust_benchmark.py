@@ -21,7 +21,9 @@ CONTAINER = os.getenv("CONTAINER", "citus_loadbalancer")
 # Task weights and settings - can be overridden by environment variables
 READ_WEIGHT = int(os.getenv("READ_WEIGHT", "80"))  # Default 80% reads
 WRITE_WEIGHT = int(os.getenv("WRITE_WEIGHT", "20"))  # Default 20% writes
-SPATIAL_WEIGHT = min(30, READ_WEIGHT)  # 30% of reads are spatial, but never more than READ_WEIGHT
+
+# Only calculate SPATIAL_WEIGHT if we're doing reads
+SPATIAL_WEIGHT = min(30, READ_WEIGHT) if READ_WEIGHT > 0 else 0
 
 # Print the operation mode for clarity
 if READ_WEIGHT > 0 and WRITE_WEIGHT > 0:
@@ -353,7 +355,7 @@ class PostgresUser(User):
 
     # Only include read task if READ_WEIGHT > 0
     if READ_WEIGHT > 0:
-        @task(READ_WEIGHT - min(SPATIAL_WEIGHT, READ_WEIGHT))
+        @task(READ_WEIGHT - SPATIAL_WEIGHT)
         def read_operation(self):
             """Perform standard read operations"""
             try:
