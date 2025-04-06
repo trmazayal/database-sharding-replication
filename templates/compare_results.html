@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Compare Benchmark Results</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="container mt-4">
+        <h1>Compare Benchmark Results</h1>
+        <p><a href="/compare_results" class="btn btn-sm btn-outline-primary"><i class="bi bi-arrow-left"></i> Back to Selection</a></p>
+
+        <div class="row">
+            <div class="col-md-12">
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5>Throughput Comparison</h5>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="throughputComparisonChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5>Read Latency Comparison</h5>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="readLatencyChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-6">
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5>Write Latency Comparison</h5>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="writeLatencyChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5>Detailed Comparison</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead>
+                            <tr>
+                                <th>Metric</th>
+                                {% for result in results %}
+                                <th>{{ result.filename }}</th>
+                                {% endfor %}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>Total Throughput (ops/sec)</td>
+                                {% for result in results %}
+                                <td>{{ "%.2f"|format(result.data.throughput_ops_sec.total) }}</td>
+                                {% endfor %}
+                            </tr>
+                            <tr>
+                                <td>Read Throughput (ops/sec)</td>
+                                {% for result in results %}
+                                <td>{{ "%.2f"|format(result.data.throughput_ops_sec.read) }}</td>
+                                {% endfor %}
+                            </tr>
+                            <tr>
+                                <td>Write Throughput (ops/sec)</td>
+                                {% for result in results %}
+                                <td>{{ "%.2f"|format(result.data.throughput_ops_sec.write) }}</td>
+                                {% endfor %}
+                            </tr>
+                            <tr>
+                                <td>Spatial Throughput (ops/sec)</td>
+                                {% for result in results %}
+                                <td>{{ "%.2f"|format(result.data.throughput_ops_sec.spatial) }}</td>
+                                {% endfor %}
+                            </tr>
+                            <tr>
+                                <td>Read Latency - Avg (ms)</td>
+                                {% for result in results %}
+                                <td>{{ "%.2f"|format(result.data.read_latency_ms.avg) }}</td>
+                                {% endfor %}
+                            </tr>
+                            <tr>
+                                <td>Read Latency - P95 (ms)</td>
+                                {% for result in results %}
+                                <td>{{ "%.2f"|format(result.data.read_latency_ms.p95) }}</td>
+                                {% endfor %}
+                            </tr>
+                            <tr>
+                                <td>Write Latency - Avg (ms)</td>
+                                {% for result in results %}
+                                <td>{{ "%.2f"|format(result.data.write_latency_ms.avg) }}</td>
+                                {% endfor %}
+                            </tr>
+                            <tr>
+                                <td>Write Latency - P95 (ms)</td>
+                                {% for result in results %}
+                                <td>{{ "%.2f"|format(result.data.write_latency_ms.p95) }}</td>
+                                {% endfor %}
+                            </tr>
+                            <tr>
+                                <td>Success Rate</td>
+                                {% for result in results %}
+                                <td>{{ "%.2f"|format(result.data.success_rate) }}%</td>
+                                {% endfor %}
+                            </tr>
+                            <tr>
+                                <td>Total Operations</td>
+                                {% for result in results %}
+                                <td>{{ result.data.operations.total }}</td>
+                                {% endfor %}
+                            </tr>
+                            <tr>
+                                <td>Test Duration (sec)</td>
+                                {% for result in results %}
+                                <td>{{ "%.2f"|format(result.data.throughput_ops_sec.test_duration_sec) }}</td>
+                                {% endfor %}
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Prepare colors
+            const colors = [
+                'rgba(54, 162, 235, 0.7)',
+                'rgba(255, 99, 132, 0.7)',
+                'rgba(255, 206, 86, 0.7)',
+                'rgba(75, 192, 192, 0.7)'
+            ];
+
+            const borderColors = [
+                'rgba(54, 162, 235, 1)',
+                'rgba(255, 99, 132, 1)',
+                'rgba(255, 206, 86, 1)',
+                'rgba(75, 192, 192, 1)'
+            ];
+
+            // Throughput comparison chart
+            const throughputLabels = ['Total', 'Read', 'Write', 'Spatial'];
+            const throughputDatasets = [];
+
+            {% for result in results %}
+            throughputDatasets.push({
+                label: '{{ result.filename }}',
+                data: [
+                    {{ result.data.throughput_ops_sec.total }},
+                    {{ result.data.throughput_ops_sec.read }},
+                    {{ result.data.throughput_ops_sec.write }},
+                    {{ result.data.throughput_ops_sec.spatial }}
+                ],
+                backgroundColor: colors[{{ loop.index0 }} % colors.length],
+                borderColor: borderColors[{{ loop.index0 }} % borderColors.length],
+                borderWidth: 1
+            });
+            {% endfor %}
+
+            const throughputCtx = document.getElementById('throughputComparisonChart').getContext('2d');
+            new Chart(throughputCtx, {
+                type: 'bar',
+                data: {
+                    labels: throughputLabels,
+                    datasets: throughputDatasets
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Operations per Second'
+                            }
+                        }
+                    },
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Throughput Comparison'
+                        }
+                    }
+                }
+            });
+
+            // Read Latency comparison chart
+            const readLatencyLabels = ['Average', 'Min', 'Max', 'P95'];
+            const readLatencyDatasets = [];
+
+            {% for result in results %}
+            readLatencyDatasets.push({
+                label: '{{ result.filename }}',
+                data: [
+                    {{ result.data.read_latency_ms.avg }},
+                    {{ result.data.read_latency_ms.min }},
+                    {{ result.data.read_latency_ms.max }},
+                    {{ result.data.read_latency_ms.p95 }}
+                ],
+                backgroundColor: colors[{{ loop.index0 }} % colors.length],
+                borderColor: borderColors[{{ loop.index0 }} % borderColors.length],
+                borderWidth: 1
+            });
+            {% endfor %}
+
+            const readLatencyCtx = document.getElementById('readLatencyChart').getContext('2d');
+            new Chart(readLatencyCtx, {
+                type: 'bar',
+                data: {
+                    labels: readLatencyLabels,
+                    datasets: readLatencyDatasets
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Milliseconds'
+                            }
+                        }
+                    },
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Read Latency Comparison'
+                        }
+                    }
+                }
+            });
+
+            // Write Latency comparison chart
+            const writeLatencyLabels = ['Average', 'Min', 'Max', 'P95'];
+            const writeLatencyDatasets = [];
+
+            {% for result in results %}
+            writeLatencyDatasets.push({
+                label: '{{ result.filename }}',
+                data: [
+                    {{ result.data.write_latency_ms.avg }},
+                    {{ result.data.write_latency_ms.min }},
+                    {{ result.data.write_latency_ms.max }},
+                    {{ result.data.write_latency_ms.p95 }}
+                ],
+                backgroundColor: colors[{{ loop.index0 }} % colors.length],
+                borderColor: borderColors[{{ loop.index0 }} % borderColors.length],
+                borderWidth: 1
+            });
+            {% endfor %}
+
+            const writeLatencyCtx = document.getElementById('writeLatencyChart').getContext('2d');
+            new Chart(writeLatencyCtx, {
+                type: 'bar',
+                data: {
+                    labels: writeLatencyLabels,
+                    datasets: writeLatencyDatasets
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'Milliseconds'
+                            }
+                        }
+                    },
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Write Latency Comparison'
+                        }
+                    }
+                }
+            });
+        });
+    </script>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

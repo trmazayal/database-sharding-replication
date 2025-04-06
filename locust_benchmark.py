@@ -22,7 +22,7 @@ CONTAINER = os.getenv("CONTAINER", "citus_loadbalancer")
 READ_WEIGHT = int(os.getenv("READ_WEIGHT", "80"))  # Default 80% reads
 WRITE_WEIGHT = int(os.getenv("WRITE_WEIGHT", "20"))  # Default 20% writes
 
-# Only calculate SPATIAL_WEIGHT if we're doing reads
+# Only calculate SPATIAL_WEIGHT if we're doing reads, but treat as part of READ
 SPATIAL_WEIGHT = min(30, READ_WEIGHT) if READ_WEIGHT > 0 else 0
 
 # Print the operation mode for clarity
@@ -36,21 +36,20 @@ else:
     print("WARNING: Both READ_WEIGHT and WRITE_WEIGHT are 0. No operations will run.")
 
 # Connection pooling settings
-MIN_CONNECTIONS = 5
-MAX_CONNECTIONS = 20
+MIN_CONNECTIONS = 100
+MAX_CONNECTIONS = 250
 
 # Store metrics for custom reporting
 custom_metrics = {
     "read_latencies": [],
     "write_latencies": [],
-    "spatial_latencies": [],
     "errors": [],
     "success_count": 0,
     "error_count": 0,
     "start_time": None,
     "read_count": 0,
     "write_count": 0,
-    "spatial_count": 0
+    "spatial_count": 0  # Keep this for backward compatibility
 }
 
 # Initialize PostgreSQL connection pool
@@ -199,36 +198,32 @@ def on_test_stop(environment, **kwargs):
         test_duration = end_time - custom_metrics["start_time"]
 
         # Calculate throughput metrics (operations per second)
-        total_ops = custom_metrics["read_count"] + custom_metrics["write_count"] + custom_metrics["spatial_count"]
+        # Count spatial operations as read operations for throughput calculation
+        total_read_count = custom_metrics["read_count"] + custom_metrics["spatial_count"]
+        total_ops = total_read_count + custom_metrics["write_count"]
         total_throughput = total_ops / test_duration if test_duration > 0 else 0
-        read_throughput = custom_metrics["read_count"] / test_duration if test_duration > 0 else 0
+        read_throughput = total_read_count / test_duration if test_duration > 0 else 0
         write_throughput = custom_metrics["write_count"] / test_duration if test_duration > 0 else 0
-        spatial_throughput = custom_metrics["spatial_count"] / test_duration if test_duration > 0 else 0
 
         print(f"Overall throughput: {total_throughput:.2f} ops/sec ({total_ops} operations in {test_duration:.2f} seconds)")
-        print(f"Read throughput: {read_throughput:.2f} ops/sec ({custom_metrics['read_count']} operations)")
+        print(f"Read throughput: {read_throughput:.2f} ops/sec ({total_read_count} operations, includes {custom_metrics['spatial_count']} spatial)")
         print(f"Write throughput: {write_throughput:.2f} ops/sec ({custom_metrics['write_count']} operations)")
-        print(f"Spatial throughput: {spatial_throughput:.2f} ops/sec ({custom_metrics['spatial_count']} operations)")
     else:
         print("Warning: Test start time was not recorded. Cannot calculate throughput.")
-        total_throughput = read_throughput = write_throughput = spatial_throughput = 0
+        total_throughput = read_throughput = write_throughput = 0
         test_duration = 0
+        total_read_count = custom_metrics["read_count"] + custom_metrics["spatial_count"]
 
     # Generate summary statistics
     if custom_metrics["read_latencies"]:
         avg_read = statistics.mean(custom_metrics["read_latencies"])
         p95_read = statistics.quantiles(custom_metrics["read_latencies"], n=20)[18] if len(custom_metrics["read_latencies"]) >= 20 else avg_read
-        print(f"Read latency - Avg: {avg_read:.2f}ms, p95: {p95_read:.2f}ms")
+        print(f"Read latency (including spatial) - Avg: {avg_read:.2f}ms, p95: {p95_read:.2f}ms")
 
     if custom_metrics["write_latencies"]:
         avg_write = statistics.mean(custom_metrics["write_latencies"])
         p95_write = statistics.quantiles(custom_metrics["write_latencies"], n=20)[18] if len(custom_metrics["write_latencies"]) >= 20 else avg_write
         print(f"Write latency - Avg: {avg_write:.2f}ms, p95: {p95_write:.2f}ms")
-
-    if custom_metrics["spatial_latencies"]:
-        avg_spatial = statistics.mean(custom_metrics["spatial_latencies"])
-        p95_spatial = statistics.quantiles(custom_metrics["spatial_latencies"], n=20)[18] if len(custom_metrics["spatial_latencies"]) >= 20 else avg_spatial
-        print(f"Spatial latency - Avg: {avg_spatial:.2f}ms, p95: {p95_spatial:.2f}ms")
 
     # Calculate success rate
     total = custom_metrics["success_count"] + custom_metrics["error_count"]
@@ -255,24 +250,24 @@ def on_test_stop(environment, **kwargs):
                 "max": max(custom_metrics["write_latencies"]) if custom_metrics["write_latencies"] else 0,
                 "p95": statistics.quantiles(custom_metrics["write_latencies"], n=20)[18] if len(custom_metrics["write_latencies"]) > 19 else 0
             },
+            # For backward compatibility, include spatial_latency_ms but point to read metrics
             "spatial_latency_ms": {
-                "avg": statistics.mean(custom_metrics["spatial_latencies"]) if custom_metrics["spatial_latencies"] else 0,
-                "min": min(custom_metrics["spatial_latencies"]) if custom_metrics["spatial_latencies"] else 0,
-                "max": max(custom_metrics["spatial_latencies"]) if custom_metrics["spatial_latencies"] else 0,
-                "p95": statistics.quantiles(custom_metrics["spatial_latencies"], n=20)[18] if len(custom_metrics["spatial_latencies"]) > 19 else 0
+                "avg": statistics.mean(custom_metrics["read_latencies"]) if custom_metrics["read_latencies"] else 0,
+                "min": min(custom_metrics["read_latencies"]) if custom_metrics["read_latencies"] else 0,
+                "max": max(custom_metrics["read_latencies"]) if custom_metrics["read_latencies"] else 0,
+                "p95": statistics.quantiles(custom_metrics["read_latencies"], n=20)[18] if len(custom_metrics["read_latencies"]) > 19 else 0
             },
             "throughput_ops_sec": {
                 "total": total_throughput,
                 "read": read_throughput,
                 "write": write_throughput,
-                "spatial": spatial_throughput,
-                "test_duration_sec": test_duration
+                "spatial": 0  # Included in read throughput
             },
             "operations": {
                 "total": total_ops,
-                "read": custom_metrics["read_count"],
+                "read": total_read_count,
                 "write": custom_metrics["write_count"],
-                "spatial": custom_metrics["spatial_count"]
+                "spatial": custom_metrics["spatial_count"]  # Keep for reference
             },
             "success_count": custom_metrics["success_count"],
             "error_count": custom_metrics["error_count"],
@@ -298,7 +293,7 @@ def execute_query(query, params=None, query_type="read"):
             else:
                 cursor.execute(query)
 
-            # Fetch results if it's a read query
+            # Fetch results if it's a read query (including spatial)
             if query_type in ["read", "spatial"]:
                 results = cursor.fetchall()
                 count = len(results)
@@ -310,16 +305,16 @@ def execute_query(query, params=None, query_type="read"):
         end_time = time.time()
         latency_ms = (end_time - start_time) * 1000
 
-        # Store latency in custom metrics
-        if query_type == "read":
+        # Store latency in custom metrics - treat spatial as read
+        if query_type == "read" or query_type == "spatial":
             custom_metrics["read_latencies"].append(latency_ms)
-            custom_metrics["read_count"] += 1
+            if query_type == "spatial":
+                custom_metrics["spatial_count"] += 1
+            else:
+                custom_metrics["read_count"] += 1
         elif query_type == "write":
             custom_metrics["write_latencies"].append(latency_ms)
             custom_metrics["write_count"] += 1
-        elif query_type == "spatial":
-            custom_metrics["spatial_latencies"].append(latency_ms)
-            custom_metrics["spatial_count"] += 1
 
         custom_metrics["success_count"] += 1
 
@@ -448,10 +443,10 @@ class PostgresUser(User):
                             "WHERE ST_DWithin(location::geography, ST_SetSRID(ST_MakePoint(%s, %s), 4326)::geography, %s) " +
                             "LIMIT 500",
                             (lon, lat, radius),
-                            "spatial"
+                            "spatial"  # Still mark as spatial for counting
                         )
                         self.environment.events.request.fire(
-                            request_type="Spatial",
+                            request_type="Read",  # Changed from Spatial to Read
                             name="Distance Search",
                             response_time=latency,
                             response_length=count,
@@ -470,10 +465,10 @@ class PostgresUser(User):
                             "WHERE ST_Within(location, ST_MakeEnvelope(%s, %s, %s, %s, 4326)) " +
                             "LIMIT 500",
                             (min_lon, min_lat, max_lon, max_lat),
-                            "spatial"
+                            "spatial"  # Still mark as spatial for counting
                         )
                         self.environment.events.request.fire(
-                            request_type="Spatial",
+                            request_type="Read",  # Changed from Spatial to Read
                             name="Bounding Box",
                             response_time=latency,
                             response_length=count,
@@ -482,7 +477,7 @@ class PostgresUser(User):
 
                 except Exception as e:
                     self.environment.events.request.fire(
-                        request_type="Spatial",
+                        request_type="Read",  # Changed from Spatial to Read
                         name="Spatial Operation",
                         response_time=0,
                         response_length=0,
