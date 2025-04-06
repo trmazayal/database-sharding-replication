@@ -30,14 +30,19 @@ This project builds a distributed PostgreSQL cluster with:
    git checkout master-slave-worker
    ```
 
-2. Start the cluster:
+2. Make the scripts executable:
+   ```
+   chmod +x *.sh
+   ```
+
+3. Start the cluster:
    ```
    ./run.sh
    ```
 
-3. Wait for initialization (approx. 3-5 minutes)
+4. Wait for initialization (approx. 3-5 minutes)
 
-4. Run benchmarks with the web UI:
+5. Run benchmarks with the web UI:
    ```
    ./run_web_ui.sh
    ```
@@ -130,6 +135,35 @@ Modify the USERS and SPAWN_RATE parameters to simulate different loads:
 ```bash
 USERS=500 SPAWN_RATE=50 ./read_benchmark.sh
 ```
+
+## Monitoring and Results
+
+Benchmark results are saved to the `benchmark_results` directory:
+
+- JSON metrics with detailed performance data
+- Log files with request-level information
+- Timestamp-based directories for organizing multiple test runs
+
+Use the web UI's "Results" page to:
+- View historical benchmark results
+- Compare multiple benchmark runs
+- Download result files for external analysis
+
+## Database Schema
+
+The benchmark uses a `vehicle_locations` table with PostGIS geometry:
+
+```sql
+CREATE TABLE vehicle_locations (
+  id bigserial,
+  vehicle_id int NOT NULL,
+  location geometry(Point, 4326) NOT NULL,
+  recorded_at timestamptz NOT NULL,
+  region_code text NOT NULL
+);
+```
+
+This table is distributed across worker nodes using the `region_code` column.
 
 ## Troubleshooting
 
