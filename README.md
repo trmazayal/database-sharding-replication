@@ -1,210 +1,182 @@
-# Distributed PostgreSQL Cluster with Citus and PostGIS
+# Citus High-Availability Benchmarking Toolkit
 
-This project sets up a distributed PostgreSQL cluster using Citus and PostGIS with an active-active configuration, load balancing, and high availability.
+A comprehensive toolkit for deploying and benchmarking a highly available PostgreSQL cluster using Citus with primary-secondary replication.
 
 ## Architecture
 
-The cluster is composed of multiple PostgreSQL nodes with Citus and PostGIS extensions configured in an active-active setup. Below is an example of the architecture:
+This project builds a distributed PostgreSQL cluster with:
 
+- **Coordinator Layer**: Primary and secondary coordinators for high availability
+- **Worker Layer**: Three worker nodes with logical replication (using shard replication factor)
+- **Load Balancer**: HAProxy for connection routing between coordinators
+- **PostGIS Integration**: Spatial data capabilities on all nodes
+- **Benchmarking Tools**: Locust-based tools for performance testing
+
+![Architecture Diagram](shared-worker.png)
 
 ## Prerequisites
 
-- Docker and Docker Compose installed on your machine.
-- Python 3 with matplotlib, pandas, and numpy packages (for visualization)
+- Docker and Docker Compose
+- Python 3.7+
+- bash shell
 
-## Setup
+## Quick Start
 
 1. Clone the repository:
-   git clone https://github.com/trmazayal/database-sharding.git
-   cd database-sharding
-
-2. Set any required script permissions:
+   ```
+   git clone https://github.com/trmazayal/database-sharding-replication.git
+   cd database-sharding-replication
+   git checkout shared-worker-model
+   ```
+2. Make the scripts executable:
+   ```
    chmod +x *.sh
+   ```
 
 3. Start the cluster:
-   docker-compose up -d
-
-4. Verify the cluster is running:
-   docker-compose ps
-
-## Testing the Cluster
-
-1. Connect to the coordinator node via load balancer:
-   docker exec -it citus_loadbalancer sh -c 'PGPASSWORD=citus psql -h localhost -p 5432 -U citus -d citus'
-
-2. Create a distributed table:
-    -- Create a distributed table
-    CREATE TABLE vehicle_locations (
-    id bigserial,
-    vehicle_id int NOT NULL,
-    location geometry(Point, 4326) NOT NULL,
-    recorded_at timestamptz NOT NULL,
-    region_code text NOT NULL  -- Make sure it's NOT NULL if it's the distribution column
-    );
-
-    -- Create necessary indexes
-    CREATE INDEX idx_vehicle_locations_location ON vehicle_locations USING GIST (location);
-    CREATE INDEX idx_vehicle_locations_region_code ON vehicle_locations (region_code);
-
-    -- Distribute the table by region_code
-    SELECT create_distributed_table('vehicle_locations', 'region_code');
-
-
-3. Insert data into the distributed table:
-    -- Insert 1,000,000 dummy rows into vehicle_locations
-    INSERT INTO vehicle_locations (vehicle_id, location, recorded_at, region_code)
-        SELECT
-        -- Generate a random vehicle_id between 1 and 10,000
-        (floor(random() * 10000) + 1)::int AS vehicle_id,
-
-        -- Generate a random point near New York City, for example.
-        -- Adjust the longitude and latitude ranges as needed.
-        ST_SetSRID(
-            ST_MakePoint(
-            -74.0 + random() * 0.5,  -- longitude between -74.0 and -73.5
-            40.7 + random() * 0.5    -- latitude between 40.7 and 41.2
-            ),
-            4326
-        ) AS location,
-
-        -- Generate a random timestamp within the last 30 days
-        NOW() - (random() * interval '30 days') AS recorded_at,
-
-        -- Randomly assign one of three region codes. Adjust or add more as needed.
-        CASE
-            WHEN random() < 0.33 THEN 'region_north'
-            WHEN random() < 0.66 THEN 'region_south'
-            ELSE 'region_central'
-        END AS region_code
-        FROM generate_series(1, 1000000) s(i);
-
-4. Query to the table:
-    -- Query all vehicles within 5km of a specific point
-    SELECT id, vehicle_id, recorded_at, region_code
-    FROM vehicle_locations
-    WHERE ST_DWithin(
-            location::geography,
-            ST_SetSRID(ST_MakePoint(-73.9857, 40.7484), 4326)::geography,
-            5000
-        );
-
-    -- Query all vehicles within a bounding box
-    SELECT *
-    FROM vehicle_locations
-    WHERE ST_Within(
-        location,
-        ST_MakeEnvelope(-74.0, 40.7, -73.9, 40.8, 4326)
-    );
-
-## Benchmarking
-
-The project includes several benchmark scripts to evaluate performance and high availability:
-
-### Running Benchmarks
-
-1. Run all benchmarks and generate visualizations:
-   ```bash
-   ./run-benchmarks.sh
+   ```
+   ./run.sh
    ```
 
-   This script will:
-   - Run all benchmark types
-   - Generate CSV data in the benchmark_results directory
-   - Create visualizations using matplotlib
-   - Generate an HTML report with all graphs
+4. Wait for initialization (approx. 3-5 minutes)
 
-2. Or run individual benchmarks:
-   ```bash
-   # Standard benchmark (tests query performance and concurrency)
-   ./benchmark.sh
+5. Run benchmarks with the web UI:
+   ```
+   ./run_web_ui.sh
+   ```
+   Open http://localhost:8080 in your browser
 
-   # Worker node benchmark (compares performance across different nodes)
-   ./worker-benchmark.sh
+## Components
 
-   # High availability benchmark (tests failure recovery)
-   ./ha-benchmark.sh
+### Docker Services
 
-   # Generate visualizations from benchmark results
-   python3 visualize_benchmarks.py
+- **coordinator_primary/secondary**: Citus coordinator nodes
+- **worker{1,2,3}**: Distributed worker nodes
+- **loadbalancer**: HAProxy for connection routing
+- **manager**: Initial cluster setup and configuration
+
+### Benchmarking Tools
+
+- **read_benchmark.sh**: Read-only workload testing
+- **write_benchmark.sh**: Write-only workload testing
+- **mixed_benchmark.sh**: Combined read/write testing with configurable ratios
+- **run_locust_benchmark.sh**: Core benchmarking script with Locust
+- **web_ui.py**: Interactive web interface for running benchmarks
+
+## Running Benchmarks
+
+### Via Web UI
+
+1. Start the web UI:
+   ```
+   ./run_web_ui.sh
    ```
 
-Make sure the permissions are set correctly:
-   ```bash
-   chmod +x benchmark.sh worker-benchmark.sh ha-benchmark.sh run-benchmarks.sh
-   ```
+2. Open http://localhost:8080 in your browser
+3. Configure benchmark parameters:
+   - Number of users
+   - Spawn rate
+   - Run time
+   - Benchmark type (read, write, mixed)
+   - Read/write ratio for mixed benchmarks
+4. View real-time results and download reports
 
-### Visualization
+### Via Command Line
 
-The benchmarks generate CSV files that are processed by the visualization script to create:
+Run specific benchmark types:
 
-1. Bar charts of query performance
-2. Line graphs showing iteration performance
-3. Worker node comparison charts
-4. High availability success/failure rate graphs
-
-The visualization requires Python with matplotlib, pandas, and numpy packages:
 ```bash
-pip3 install matplotlib pandas numpy
+# Read-only benchmark
+./read_benchmark.sh
+
+# Write-only benchmark
+./write_benchmark.sh
+
+# Mixed workload (80% read, 20% write)
+READ_RATIO=80 WRITE_RATIO=20 ./mixed_benchmark.sh
+
+# Custom parameters
+USERS=200 SPAWN_RATE=20 RUN_TIME=120 ./run_locust_benchmark.sh
 ```
 
-### What's Being Tested
+## Benchmark Customization
 
-- Single query performance for various query types
-- Concurrent query performance with different levels of concurrency
-- Data distribution across the cluster
-- Spatial query performance
-- High availability during node failures
-- Recovery times
+### Adjusting User Load
 
-## Component Breakdown
+```bash
+# Modify user count and spawn rate
+USERS=500 SPAWN_RATE=50 RUN_TIME=300 ./read_benchmark.sh
+```
 
-- Coordinator Nodes: Primary and secondary PostgreSQL servers running Citus.
-- Worker Nodes: Nodes that store and process distributed data.
-- Load Balancer: HAProxy configured to distribute incoming requests between coordinators.
-- Manager: (Optional) A service to configure the cluster on startup.
+### Changing Read/Write Workload Distribution
 
-### Key Files
+```bash
+# Change the read/write ratio for mixed benchmarks
+READ_RATIO=60 WRITE_RATIO=40 ./mixed_benchmark.sh
+```
 
-- docker-compose.yml: Defines all services and their configurations.
-- Dockerfile: Extends the Citus image with PostGIS.
-- setup.sh: Initializes the cluster configuration.
-- haproxy.cfg: Load balancer configuration.
-- init.sql: Creates and populates a distributed table for testing.
-- benchmark.sh, worker-benchmark.sh, ha-benchmark.sh: Performance benchmarks.
-- visualize_benchmarks.py: Creates graphical reports of benchmark results.
+## Monitoring and Results
+
+Benchmark results are saved to the `benchmark_results` directory:
+
+- JSON metrics with detailed performance data
+- Log files with request-level information
+- Timestamp-based directories for organizing multiple test runs
+
+Use the web UI's "Results" page to:
+- View historical benchmark results
+- Compare multiple benchmark runs
+- Download result files for external analysis
+
+## Database Schema
+
+The benchmark uses a `vehicle_locations` table with PostGIS geometry:
+
+```sql
+CREATE TABLE vehicle_locations (
+  id bigserial,
+  vehicle_id int NOT NULL,
+  location geometry(Point, 4326) NOT NULL,
+  recorded_at timestamptz NOT NULL,
+  region_code text NOT NULL
+);
+```
+
+This table is distributed across worker nodes using the `region_code` column.
 
 ## Troubleshooting
 
 ### Connection Issues
 
-- Check running containers:
-   docker-compose ps
+If the benchmark can't connect to the database:
 
-- View load balancer logs:
-   docker logs <load-balancer-container-name>
+```bash
+docker exec -it citus_loadbalancer psql -h localhost -U citus -d citus
+```
 
-- View coordinator node logs:
-   docker logs <coordinator-container-name>
+### Replication Problems
 
-### Data Distribution Issues
+Check replication status:
 
-- Verify worker nodes registration:
-   psql -h localhost -p 5432 -U postgres -c "SELECT * FROM pg_dist_node;"
+```bash
+docker exec -it citus_coordinator_primary psql -U citus -c "SELECT * FROM pg_stat_replication;"
+```
 
-- Check shard placement:
-   psql -h localhost -p 5432 -U postgres -c "SELECT * FROM pg_dist_placement;"
+### Log Access
 
-- Verify shard count:
-   psql -h localhost -p 5432 -U postgres -c "SELECT * FROM pg_dist_shard;"
+View logs for specific components:
 
-## Cleanup
+```bash
+# Coordinator logs
+docker logs citus_coordinator_primary
 
-To stop and remove the cluster, run:
-   docker-compose down
+# Worker logs
+docker logs citus_worker1
 
-To completely remove all data volumes as well:
-   docker-compose down -v
+# Load balancer logs
+docker logs citus_loadbalancer
+```
 
-## Author
+## License
 
-Tara Mazaya Lababan
+[MIT License](LICENSE)
