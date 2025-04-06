@@ -10,6 +10,7 @@ This project builds a distributed PostgreSQL cluster with:
 - **Worker Layer**: Three worker nodes, each with primary and secondary instances
 - **Load Balancer**: HAProxy for routing database connections
 - **Monitoring**: Worker node monitoring and automatic failover
+- **PostGIS Integration**: Spatial data capabilities on all nodes
 - **Benchmarking Tools**: Locust-based read/write benchmarking
 
 ![Architecture Diagram](master-slave-worker.png)
@@ -56,8 +57,9 @@ This project builds a distributed PostgreSQL cluster with:
 
 - **read_benchmark.sh**: Read-only workload testing
 - **write_benchmark.sh**: Write-only workload testing
-- **mixed_benchmark.sh**: Combined read/write testing
-- **web_ui.py**: Web interface for running benchmarks
+- **mixed_benchmark.sh**: Combined read/write testing with configurable ratios
+- **run_locust_benchmark.sh**: Core benchmarking script with Locust
+- **web_ui.py**: Interactive web interface for running benchmarks
 
 ## Running Benchmarks
 
@@ -69,7 +71,12 @@ This project builds a distributed PostgreSQL cluster with:
    ```
 
 2. Open http://localhost:8080 in your browser
-3. Configure benchmark parameters and click "Start Benchmark"
+3. Configure benchmark parameters:
+   - Number of users
+   - Spawn rate
+   - Run time
+   - Benchmark type (read, write, mixed)
+   - Read/write ratio for mixed benchmarks
 4. View real-time results and download reports
 
 ### Via Command Line
